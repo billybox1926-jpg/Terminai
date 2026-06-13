@@ -747,6 +747,298 @@ app.get("/api/runtime/api/status", (_req, res) => {
 });
 
 // -------------------------------------------------------
+// API BRIDGE — internal capability invocation contract
+// -------------------------------------------------------
+
+const API_BRIDGE_CONTRACT_PATH = path.resolve(__dirname, "runtime", "api-bridge-contract.json");
+const API_AUDIT_LOG_PATH = path.resolve(
+  process.env.TERMINAI_WORKSPACE_ROOT || process.cwd(),
+  "terminai_api_audit.jsonl"
+);
+
+let apiBridgeState = {
+  deviceSettings: {
+    batteryLevel: 82,
+    batteryTemperature: "28.5 °C",
+    isCharging: false,
+    networkSsid: "TerminAI_Local_Link",
+  } as any,
+  clipboard: "TerminAI: Seamless local pipeline active.",
+};
+
+function readApiBridgeContract(): any {
+  try {
+    if (fs.existsSync(API_BRIDGE_CONTRACT_PATH)) {
+      const raw = fs.readFileSync(API_BRIDGE_CONTRACT_PATH, "utf-8");
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error("Failed to read API bridge contract:", e);
+  }
+  return null;
+}
+
+function getApiCapabilityById(capabilityId: string): any {
+  const caps = readApiBaseline();
+  return caps.find((c: any) => c.id === capabilityId) || null;
+}
+
+function readApiAuditLog(): any[] {
+  try {
+    if (fs.existsSync(API_AUDIT_LOG_PATH)) {
+      const raw = fs.readFileSync(API_AUDIT_LOG_PATH, "utf-8");
+      return raw.trim().split("\n").filter(Boolean).map((line: string) => JSON.parse(line));
+    }
+  } catch (e) {
+    console.error("Failed to read API audit log:", e);
+  }
+  return [];
+}
+
+function appendApiAuditEvent(event: any): void {
+  try {
+    const line = JSON.stringify(event) + "\n";
+    fs.appendFileSync(API_AUDIT_LOG_PATH, line, "utf-8");
+  } catch (e) {
+    console.error("Failed to append API audit event:", e);
+  }
+}
+
+function buildApiBridgeStatus(): any {
+  const contract = readApiBridgeContract();
+  const list = readApiBaseline();
+  const available = list.filter((c: any) => c.status === "available").length;
+  const simulated = list.filter((c: any) => c.status === "simulated").length;
+  const unavailable = list.filter((c: any) => c.status === "unavailable").length;
+  const permissionRequired = list.filter((c: any) => c.permission && c.permission !== "None").length;
+
+  return {
+    contract,
+    capabilities: list,
+    adapter: contract?.defaultAdapter || "simulated",
+    total: list.length,
+    available,
+    simulated,
+    unavailable,
+    permissionRequired,
+    auditLog: API_AUDIT_LOG_PATH,
+  };
+}
+
+// Simulated capability handlers
+function handleBatteryRead(): any {
+  return {
+    level: apiBridgeState.deviceSettings.batteryLevel,
+    temperature: apiBridgeState.deviceSettings.batteryTemperature,
+    isCharging: apiBridgeState.deviceSettings.isCharging,
+    source: "simulated",
+  };
+}
+
+function handleClipboardRead(): any {
+  return { content: apiBridgeState.clipboard, source: "simulated" };
+}
+
+function handleClipboardWrite(payload: any): any {
+  if (payload?.content && typeof payload.content === "string") {
+    apiBridgeState.clipboard = payload.content;
+  }
+  return { content: apiBridgeState.clipboard, source: "simulated" };
+}
+
+function handleNotificationSend(payload: any): any {
+  return {
+    sent: false,
+    simulated: true,
+    message: "Native notification bridge not yet active. Notification logged.",
+    title: payload?.title || "TerminAI",
+    body: payload?.body || "Test notification",
+  };
+}
+
+function handleStorageStatus(): any {
+  return {
+    workspaceRoot: process.env.TERMINAI_WORKSPACE_ROOT || process.cwd(),
+    runtimeRoot: getRuntimeRoot(),
+    source: "available",
+  };
+}
+
+function handleIntentValidate(payload: any): any {
+  const url = payload?.url || "";
+  const valid = typeof url === "string" && (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("intent://"));
+  return { url, valid, simulated: true, message: valid ? "URL format valid." : "Invalid URL format." };
+}
+
+function handleVibrationPulse(payload: any): any {
+  const pattern = payload?.pattern || [200];
+  return { pattern, simulated: true, message: "Vibration simulated. Native haptics bridge not yet active." };
+}
+
+function handleNetworkInfoRead(): any {
+  return {
+    ssid: apiBridgeState.deviceSettings.networkSsid,
+    platform: os.platform(),
+    arch: os.arch(),
+    hostname: os.hostname(),
+    source: "simulated",
+  };
+}
+
+function handleSensorSnapshot(): any {
+  return {
+    accelerometer: { x: 0, y: 0, z: 9.8 },
+    gyroscope: { x: 0, y: 0, z: 0 },
+    light: 200,
+    proximity: 5,
+    source: "simulated",
+    message: "Sensor data is simulated. Native sensor bridge not yet active.",
+  };
+}
+
+function handleScriptShortcutsList(): any {
+  return {
+    categories: ["system", "network", "development", "utility"],
+    source: "available",
+    message: "Script shortcut categories available.",
+  };
+}
+
+function invokeApiCapability(capabilityId: string, action: string, payload: any): any {
+  const contract = readApiBridgeContract();
+  const capability = getApiCapabilityById(capabilityId);
+
+  // Check if capability exists
+  if (!capability) {
+    return { success: false, status: "error", message: `Unknown capability: ${capabilityId}` };
+  }
+
+  // Check if blocked
+  if (contract?.blockedCapabilities?.includes(capabilityId)) {
+    return { success: false, status: "blocked", message: `Capability '${capabilityId}' is blocked until native permission flow exists.` };
+  }
+
+  // Check if unavailable
+  if (capability.status === "unavailable") {
+    return { success: false, status: "unavailable", message: `Capability '${capabilityId}' is not available.` };
+  }
+
+  // Check if action is allowlisted
+  const allowlisted = contract?.allowlistedActions?.[capabilityId] || [];
+  if (!allowlisted.includes(action)) {
+    return { success: false, status: "blocked", message: `Action '${action}' is not allowlisted for capability '${capabilityId}'.` };
+  }
+
+  // Dispatch to handler
+  const simulated = capability.status === "simulated";
+  let data: any;
+  let message = "";
+
+  switch (`${capabilityId}:${action}`) {
+    case "battery:read":
+      data = handleBatteryRead();
+      message = "Battery status (simulated).";
+      break;
+    case "clipboard:read":
+      data = handleClipboardRead();
+      message = "Clipboard read (simulated).";
+      break;
+    case "clipboard:write":
+      data = handleClipboardWrite(payload);
+      message = "Clipboard write (simulated).";
+      break;
+    case "notifications:send":
+      data = handleNotificationSend(payload);
+      message = data.message;
+      break;
+    case "storage:status":
+      data = handleStorageStatus();
+      message = "Storage status.";
+      break;
+    case "intent-open-url:validate":
+      data = handleIntentValidate(payload);
+      message = data.message;
+      break;
+    case "intent-send:validate":
+      data = handleIntentValidate(payload);
+      message = data.message;
+      break;
+    case "vibration:pulse":
+      data = handleVibrationPulse(payload);
+      message = data.message;
+      break;
+    case "network-info:read":
+      data = handleNetworkInfoRead();
+      message = "Network info (simulated).";
+      break;
+    case "sensors:snapshot":
+      data = handleSensorSnapshot();
+      message = data.message;
+      break;
+    case "boot-startup:status":
+      return { success: true, status: "simulated", data: { enabled: false }, message: "Boot startup status (simulated). Native boot receiver not yet active." };
+    case "file-picker:status":
+      return { success: true, status: "unavailable", data: null, message: "File picker requires native Android permission flow." };
+    case "script-shortcuts:list":
+      data = handleScriptShortcutsList();
+      message = data.message;
+      break;
+    default:
+      return { success: false, status: "error", message: `No handler for ${capabilityId}:${action}.` };
+  }
+
+  return { success: true, status: simulated ? "simulated" : "ok", data, message, simulated };
+}
+
+// GET /api/runtime/api/bridge/status
+app.get("/api/runtime/api/bridge/status", (_req, res) => {
+  try {
+    const status = buildApiBridgeStatus();
+    res.json(status);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/runtime/api/invoke
+app.post("/api/runtime/api/invoke", (req, res) => {
+  try {
+    const { capabilityId, action, payload } = req.body as {
+      capabilityId?: string;
+      action?: string;
+      payload?: Record<string, unknown>;
+    };
+
+    if (!capabilityId || !action) {
+      return res.status(400).json({ success: false, message: "capabilityId and action are required." });
+    }
+
+    const result = invokeApiCapability(capabilityId, action, payload || {});
+
+    // Audit the invocation
+    const auditEvent = {
+      timestamp: new Date().toISOString(),
+      capabilityId,
+      action,
+      adapter: readApiBridgeContract()?.defaultAdapter || "simulated",
+      status: result.status || "error",
+      message: result.message || "",
+    };
+    appendApiAuditEvent(auditEvent);
+
+    res.json({
+      ...result,
+      capabilityId,
+      action,
+      adapter: readApiBridgeContract()?.defaultAdapter || "simulated",
+      audited: true,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message, audited: false });
+  }
+});
+
+// -------------------------------------------------------
 // RUNTIME STATE — first-run provisioning & startup check
 // -------------------------------------------------------
 

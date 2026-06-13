@@ -941,6 +941,97 @@ export const DeviceBuildStatus: React.FC<DeviceBuildStatusProps> = ({ onSendComm
               <span>Last install: {runtimeStatus.state.lastBootstrapInstall ? new Date(runtimeStatus.state.lastBootstrapInstall).toLocaleString() : "never"}</span>
             </div>
 
+            {/* API Bridge status */}
+            {runtimeStatus.api && (
+              <div className="space-y-2 pt-2 border-t border-white/5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] text-cyan-400/80 uppercase font-bold tracking-wider">API Bridge</span>
+                  <span className="text-[9px] text-white/30">{runtimeStatus.api.adapter || "simulated"}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-[#101012] border border-white/5 p-2 rounded-lg text-center">
+                    <div className="text-[8px] text-white/30 uppercase font-bold">Available</div>
+                    <div className="text-[10px] font-extrabold text-emerald-400">{runtimeStatus.api.ready ?? 0}</div>
+                  </div>
+                  <div className="bg-[#101012] border border-white/5 p-2 rounded-lg text-center">
+                    <div className="text-[8px] text-white/30 uppercase font-bold">Simulated</div>
+                    <div className="text-[10px] font-extrabold text-blue-400">{runtimeStatus.api.simulated ?? 0}</div>
+                  </div>
+                  <div className="bg-[#101012] border border-white/5 p-2 rounded-lg text-center">
+                    <div className="text-[8px] text-white/30 uppercase font-bold">Unavailable</div>
+                    <div className="text-[10px] font-extrabold text-amber-400">{runtimeStatus.api.unavailable ?? 0}</div>
+                  </div>
+                </div>
+                {/* Quick test buttons */}
+                <div className="flex flex-wrap gap-1">
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await fetch("/api/runtime/api/invoke", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ capabilityId: "battery", action: "read", payload: {} }),
+                        });
+                        const data = await res.json();
+                        alert(`Battery: ${JSON.stringify(data.data, null, 2)}`);
+                      } catch (e: any) { alert(`Error: ${e.message}`); }
+                    }}
+                    className="text-[8px] px-2 py-1 rounded border border-white/10 bg-white/5 text-white/60 hover:text-white hover:bg-white/10 cursor-pointer"
+                  >
+                    Read Battery
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await fetch("/api/runtime/api/invoke", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ capabilityId: "clipboard", action: "read", payload: {} }),
+                        });
+                        const data = await res.json();
+                        alert(`Clipboard: ${JSON.stringify(data.data, null, 2)}`);
+                      } catch (e: any) { alert(`Error: ${e.message}`); }
+                    }}
+                    className="text-[8px] px-2 py-1 rounded border border-white/10 bg-white/5 text-white/60 hover:text-white hover:bg-white/10 cursor-pointer"
+                  >
+                    Read Clipboard
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await fetch("/api/runtime/api/invoke", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ capabilityId: "notifications", action: "send", payload: { title: "TerminAI Test", body: "Hello from API bridge" } }),
+                        });
+                        const data = await res.json();
+                        alert(`Notification: ${data.message}`);
+                      } catch (e: any) { alert(`Error: ${e.message}`); }
+                    }}
+                    className="text-[8px] px-2 py-1 rounded border border-white/10 bg-white/5 text-white/60 hover:text-white hover:bg-white/10 cursor-pointer"
+                  >
+                    Test Notification
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await fetch("/api/runtime/api/invoke", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ capabilityId: "intent-open-url", action: "validate", payload: { url: "https://github.com" } }),
+                        });
+                        const data = await res.json();
+                        alert(`URL Valid: ${data.data?.valid}\n${data.message}`);
+                      } catch (e: any) { alert(`Error: ${e.message}`); }
+                    }}
+                    className="text-[8px] px-2 py-1 rounded border border-white/10 bg-white/5 text-white/60 hover:text-white hover:bg-white/10 cursor-pointer"
+                  >
+                    Validate URL
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Runtime Bundle status */}
             {runtimeStatus.bundle && (
               <div className="space-y-2 pt-2 border-t border-white/5">

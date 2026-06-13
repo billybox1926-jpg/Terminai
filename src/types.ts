@@ -166,3 +166,55 @@ export interface DeviceBuildData {
   telemetry: TelemetryArtifactSpec;
   device: DeviceInfo;
 }
+
+// ── API Bridge types ──────────────────────────────────────────────────
+
+export interface ApiBridgeContract {
+  bridgeName: string;
+  bridgeVersion: string;
+  apiManifest: string;
+  defaultAdapter: string;
+  futureNativeAdapter: string;
+  invocationMode: string;
+  permissionMode: string;
+  auditLogFile: string;
+  blockedCapabilities: string[];
+}
+
+export interface ApiBridgeStatus {
+  contract: ApiBridgeContract | null;
+  capabilities: ApiCapability[];
+  adapter: string;
+  total: number;
+  available: number;
+  simulated: number;
+  unavailable: number;
+  permissionRequired: number;
+  auditLog: string;
+}
+
+export interface ApiInvokeRequest {
+  capabilityId: string;
+  action: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface ApiInvokeResponse {
+  success: boolean;
+  capabilityId: string;
+  action: string;
+  adapter: string;
+  status: "ok" | "simulated" | "unavailable" | "blocked" | "error";
+  data?: any;
+  message: string;
+  audited: boolean;
+}
+
+export interface ApiAuditEvent {
+  timestamp: string;
+  capabilityId: string;
+  action: string;
+  adapter: string;
+  status: string;
+  message: string;
+}

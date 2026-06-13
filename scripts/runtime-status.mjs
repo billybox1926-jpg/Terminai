@@ -128,6 +128,18 @@ if (runtimeState) {
 } else {
   console.log("  (no state file — run the server first)");
 }
-console.log("");
 
+// API Bridge
+const apiBridgeContract = readJSON(path.join(PROJECT_ROOT, "runtime", "api-bridge-contract.json"));
+if (apiBridgeContract) {
+  console.log("");
+  console.log("API Bridge:");
+  console.log(`  Bridge:      ${apiBridgeContract.bridgeName} v${apiBridgeContract.bridgeVersion}`);
+  console.log(`  Adapter:     ${apiBridgeContract.defaultAdapter}`);
+  console.log(`  Future:      ${apiBridgeContract.futureNativeAdapter}`);
+  console.log(`  Mode:        ${apiBridgeContract.invocationMode}`);
+  console.log(`  Blocked:     ${apiBridgeContract.blockedCapabilities?.join(", ") || "none"}`);
+}
+
+console.log("");
 console.log("═══════════════════════════════════════════════");

@@ -1,0 +1,84 @@
+{
+  "bridgeName": "terminai-api-bridge",
+  "bridgeVersion": "0.1.0",
+  "apiManifest": "runtime/api-baseline.json",
+  "defaultAdapter": "simulated",
+  "futureNativeAdapter": "android-native",
+  "invocationMode": "allowlisted",
+  "permissionMode": "explicit",
+  "auditLogFile": "terminai_api_audit.jsonl",
+  "invocationCategories": {
+    "readOnly": {
+      "description": "Safe read-only device status queries",
+      "capabilities": ["battery", "network-info", "sensors", "storage", "boot-startup", "script-shortcuts"],
+      "permissionRequired": false
+    },
+    "clipboard": {
+      "description": "Clipboard read/write",
+      "capabilities": ["clipboard"],
+      "permissionRequired": false
+    },
+    "notifications": {
+      "description": "Send notifications",
+      "capabilities": ["notifications"],
+      "permissionRequired": false,
+      "note": "Simulated until native notification bridge exists"
+    },
+    "storage": {
+      "description": "Storage and file picker access",
+      "capabilities": ["storage", "file-picker"],
+      "permissionRequired": true,
+      "note": "File picker unavailable until native permission flow exists"
+    },
+    "intents": {
+      "description": "Android intent helpers",
+      "capabilities": ["intent-open-url", "intent-send"],
+      "permissionRequired": false,
+      "note": "URL validation only until native intent bridge exists"
+    },
+    "haptics": {
+      "description": "Vibration and haptics",
+      "capabilities": ["vibration"],
+      "permissionRequired": false,
+      "note": "Simulated until native haptics bridge exists"
+    },
+    "media": {
+      "description": "Camera and microphone (unavailable until native permission flow)",
+      "capabilities": ["camera", "microphone"],
+      "permissionRequired": true,
+      "note": "UNAVAILABLE — requires native Android permission flow"
+    },
+    "location": {
+      "description": "GPS and location (unavailable until native permission flow)",
+      "capabilities": ["location"],
+      "permissionRequired": true,
+      "note": "UNAVAILABLE — requires native Android permission flow"
+    }
+  },
+  "allowlistedActions": {
+    "battery": ["read"],
+    "clipboard": ["read", "write"],
+    "notifications": ["send"],
+    "storage": ["status"],
+    "intent-open-url": ["validate"],
+    "intent-send": ["validate"],
+    "vibration": ["pulse"],
+    "sensors": ["snapshot"],
+    "network-info": ["read"],
+    "camera": [],
+    "microphone": [],
+    "location": [],
+    "file-picker": ["status"],
+    "boot-startup": ["status"],
+    "script-shortcuts": ["list"]
+  },
+  "blockedCapabilities": ["camera", "microphone", "location"],
+  "notes": [
+    "This contract defines ONE internal API bridge for TerminAI.",
+    "This replaces the split Termux:API companion app pattern.",
+    "All capabilities are simulated until native Android runtime connects.",
+    "Camera, microphone, and location are blocked until native permission flow exists.",
+    "Every invocation is audited to terminai_api_audit.jsonl.",
+    "No arbitrary shell commands are executed through this bridge."
+  ]
+}

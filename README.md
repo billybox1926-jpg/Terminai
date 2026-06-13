@@ -100,7 +100,16 @@ GEMINI_MODEL=gemini-2.5-flash
 ```
 
 If both provider keys are present, TerminAI uses OpenRouter first.
-## Runtime Bundle
+## API Bridge
+
+TerminAI has one internal API bridge — not separate companion apps. The bridge reads `runtime/api-baseline.json` and `runtime/api-bridge-contract.json` to expose safe, audited capability invocation.
+
+| Endpoint | Method | Purpose |
+| --- | --- | --- |
+| `/api/runtime/api/bridge/status` | GET | Bridge contract + capability counts |
+| `/api/runtime/api/invoke` | POST | Invoke a capability (allowlisted + audited) |
+
+See `docs/api-bridge-contract.md` for the full contract.
 
 The runtime bundle manifest (`runtime/runtime-bundle.json`) defines how TerminAI packages its runtime for native deployment. The lock file (`runtime/runtime-bundle.lock.json`) provides SHA-256 integrity verification.
 
