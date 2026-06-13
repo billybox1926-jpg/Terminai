@@ -1,15 +1,30 @@
 import React, { useEffect, useState } from "react";
-import { Package, CheckCircle2, AlertTriangle, Search, Info, Terminal } from "lucide-react";
+import { Package, CheckCircle2, AlertTriangle, Search, Info, Terminal, Download, Plus } from "lucide-react";
 import { CLITool } from "../types";
 
 interface PackageLibraryProps {
   onRunInstallCommand: (cmd: string) => void;
 }
 
+const aptPackageMap: Record<string, string> = {
+  git: "git",
+  curl: "curl",
+  wget: "wget",
+  jq: "jq",
+  tmux: "tmux",
+  sqlite3: "sqlite3",
+  python3: "python3",
+  node: "nodejs",
+  npm: "npm",
+  gcc: "gcc build-essential",
+  make: "make"
+};
+
 export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallCommand }) => {
   const [tools, setTools] = useState<CLITool[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [customPackage, setCustomPackage] = useState<string>("");
 
   const fetchPackages = async () => {
     setLoading(true);
@@ -36,6 +51,30 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
     tool.category.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const absentTools = tools.filter(tool => !tool.installed);
+
+  const handleInstallAllAbsent = () => {
+    const listToInstall = absentTools.map(t => aptPackageMap[t.name] || t.name).join(" ");
+    if (!listToInstall) return;
+    const cmd = `echo "Installing all missing packages..." && apt-get update && apt-get install -y ${listToInstall} || sudo apt-get update && sudo apt-get install -y ${listToInstall}`;
+    onRunInstallCommand(cmd);
+  };
+
+  const handleInstallSingle = (toolName: string) => {
+    const aptName = aptPackageMap[toolName] || toolName;
+    const cmd = `echo "Installing ${toolName}..." && apt-get update && apt-get install -y ${aptName} || sudo apt-get update && sudo apt-get install -y ${aptName}`;
+    onRunInstallCommand(cmd);
+  };
+
+  const handleCustomInstall = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customPackage.trim()) return;
+    const cleanPkg = customPackage.trim().toLowerCase();
+    const cmd = `echo "Running custom installation command..." && apt-get update && apt-get install -y ${cleanPkg} || sudo apt-get update && sudo apt-get install -y ${cleanPkg}`;
+    onRunInstallCommand(cmd);
+    setCustomPackage("");
+  };
+
   return (
     <div id="pkg-library-box" className="bg-[#141417] border border-white/5 rounded-xl p-5 font-mono select-none shadow-xl">
       <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-2.5">
@@ -43,17 +82,40 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
           <Package className="w-4 h-4 text-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)] shrink-0" />
           <h2 className="text-xs font-semibold text-white/90 uppercase tracking-wider font-display">Graphical Tools & Package Monitor</h2>
         </div>
-        <button
-          onClick={fetchPackages}
-          className="text-[10px] text-emerald-400 hover:text-emerald-300 decoration-emerald-550 hover:underline cursor-pointer font-bold font-sans"
-        >
-          Check status
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchPackages}
+            className="text-[10px] text-emerald-400 hover:text-emerald-300 decoration-emerald-550 hover:underline cursor-pointer font-bold font-sans"
+          >
+            Check status
+          </button>
+        </div>
       </div>
 
       <p className="text-[11px] text-white/40 mb-3 leading-relaxed">
-        WebTermux operates directly on a fully functional server container. Below are pre-configured developer CLI packages and interpreters:
+        Terminai operates directly on a fully functional server container. Below are pre-configured developer CLI packages and interpreters:
       </p>
+
+      {/* Auto preinstall missing helper banner */}
+      {!loading && absentTools.length > 0 && (
+        <div className="bg-emerald-950/20 border border-emerald-900/40 rounded-lg p-3 mb-3 flex flex-col gap-2 animate-fadeIn">
+          <div className="flex items-center justify-between gap-1.5 row-auto">
+            <span className="text-[10px] font-sans text-emerald-300 font-semibold flex items-center gap-1">
+              <Download className="w-3.5 h-3.5 text-emerald-400" />
+              {absentTools.length} system utilities can be pre-installed!
+            </span>
+            <button
+              onClick={handleInstallAllAbsent}
+              className="bg-emerald-500 hover:bg-emerald-400 text-black text-[9px] font-bold px-2.5 py-1 rounded select-none cursor-pointer font-sans transition-all active:scale-95 duration-70"
+            >
+              Install Missing
+            </button>
+          </div>
+          <span className="text-[9px] text-white/40 leading-snug">
+            Run automated installation in the main terminal interface. Makes full CLI environments immediately active.
+          </span>
+        </div>
+      )}
 
       {/* Search and filter bar */}
       <div className="relative mb-3.5">
@@ -76,7 +138,7 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
           Reading container binaries...
         </div>
       ) : (
-        <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+        <div className="space-y-1.5 max-h-[190px] overflow-y-auto pr-1">
           {filteredTools.length === 0 ? (
             <div className="text-center py-6 text-xs text-white/30">
               No packages match your search filter keys.
@@ -119,12 +181,19 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
                     <Info className="w-2.5 h-2.5" /> CLI query: {tool.name}
                   </span>
                   
-                  {tool.installed && (
+                  {tool.installed ? (
                     <button
                       onClick={() => onRunInstallCommand(`${tool.name} --help`)}
                       className="text-[9px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-0.5 border border-emerald-950 bg-emerald-950/20 hover:bg-emerald-950/50 rounded-md py-1 px-2.5 transition cursor-pointer"
                     >
                       <Terminal className="w-2.5 h-2.5" /> Run --help
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleInstallSingle(tool.name)}
+                      className="text-[9px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-0.5 border border-amber-950 bg-amber-950/20 hover:bg-amber-950/50 rounded-md py-1 px-2.5 transition cursor-pointer"
+                    >
+                      <Download className="w-2.5 h-2.5" /> Auto-Install
                     </button>
                   )}
                 </div>
@@ -133,6 +202,23 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
           )}
         </div>
       )}
+
+      {/* Custom APT Package form */}
+      <form onSubmit={handleCustomInstall} className="flex gap-1.5 mt-3 pt-3 border-t border-white/5">
+        <input 
+          type="text" 
+          placeholder="Install apt packages (e.g., htop, neofetch)..." 
+          value={customPackage}
+          onChange={(e) => setCustomPackage(e.target.value)}
+          className="flex-1 bg-[#0E0E10] border border-white/5 rounded-md px-2.5 py-1 text-[11px] text-white placeholder-white/20 focus:outline-none focus:border-emerald-500/50 font-mono"
+        />
+        <button 
+          type="submit" 
+          className="bg-emerald-500/10 hover:bg-emerald-500 hover:text-black border border-emerald-800/60 text-emerald-400 text-[10px] font-bold px-2.5 py-1 rounded select-none cursor-pointer font-sans transition-all"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+      </form>
     </div>
   );
 };

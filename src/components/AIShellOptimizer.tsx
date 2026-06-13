@@ -177,7 +177,7 @@ export const AIShellOptimizer: React.FC<AIShellOptimizerProps> = ({ onExecuteCom
               <button
                 onClick={() => executeInTerminal(result.optimizedCommand)}
                 className="bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 font-bold text-[10px] px-2.5 py-1 rounded-md border border-emerald-800 transition flex items-center gap-1 cursor-pointer"
-                title="Run instantly inside WebTermux Console"
+                title="Run instantly inside Terminai Console"
               >
                 Let's Run <ArrowRight className="w-3 h-3" />
               </button>

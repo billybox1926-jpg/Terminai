@@ -53,7 +53,7 @@ export const QuickScriptsLauncher: React.FC<QuickScriptsLauncherProps> = ({
 
   const handleCreateLocalFile = (script: any) => {
     const fileName = `${script.id}.sh`;
-    const fullCommand = `cat << 'EOF' > ${fileName}\n#!/bin/bash\n# WebTermux Script: ${script.name}\n${script.command}\nEOF\nchmod +x ${fileName} && echo "${fileName} created dynamically and marked as executable! Type ./${fileName} or click execute."`;
+    const fullCommand = `cat << 'EOF' > ${fileName}\n#!/bin/bash\n# Terminai Script: ${script.name}\n${script.command}\nEOF\nchmod +x ${fileName} && echo "${fileName} created dynamically and marked as executable! Type ./${fileName} or click execute."`;
     onSendCommand(fullCommand);
   };
 

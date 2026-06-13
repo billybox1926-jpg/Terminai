@@ -406,7 +406,7 @@ export const TerminalConsole: React.FC<TerminalConsoleProps> = ({
         {lines.length === 0 ? (
           <div className="text-[11px] text-white/30 py-6 leading-normal flex flex-col items-center justify-center text-center font-sans">
             <HelpCircle className="w-6 h-6 text-white/10 mb-2" />
-            <span>WebTermux Multi-Session console active.<br />Spawn shell sessions above, adjust configurations or ask the AI Co-pilot below.</span>
+            <span>Terminai Multi-Session console active.<br />Spawn shell sessions above, adjust configurations or ask the AI Co-pilot below.</span>
           </div>
         ) : (
           lines.map((line) => {
