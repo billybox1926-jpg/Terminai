@@ -73,6 +73,8 @@ Labels: `android`, `priority:medium`
 
 GitHub issue: [#5](https://github.com/billybox1926-jpg/Terminai/issues/5)
 
+Status: manual workflow implemented in `.github/workflows/android-install-smoke.yml`; pending a successful manual run before closing #5.
+
 Add confidence that the APK installs cleanly beyond just compiling.
 
 Acceptance criteria:
