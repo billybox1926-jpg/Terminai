@@ -1,5 +1,6 @@
 // Top-level build file for TerminAI native Android host.
 // One app. One dashboard. One runtime.
+// Repositories are managed in settings.gradle (dependencyResolutionManagement).
 
 buildscript {
     ext.kotlin_version = "1.9.22"
@@ -10,13 +11,6 @@ buildscript {
     dependencies {
         classpath("com.android.tools.build:gradle:8.2.2")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
-    }
-}
-
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
     }
 }
 
