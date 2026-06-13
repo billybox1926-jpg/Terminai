@@ -158,11 +158,12 @@ export const DeviceBuildStatus: React.FC<DeviceBuildStatusProps> = ({ onSendComm
     setCompileSuccess(false);
     setCompileLogs([]);
 
+    const safePackageName = safeArtifactSegment(packageName, "io.terminai.app");
     const safeApkName = `${safeArtifactSegment(appName, "terminai")}-${safeArtifactSegment(buildProfile, "debug")}-v${safeArtifactSegment(versionName, "0.1.0")}.apk`;
     const logStatements = [
       "[TerminAI CI Compiler] Initializing Android/APK build workflow...",
       "[TerminAI CI Compiler] Validating telemetry configuration blueprint...",
-      `[TerminAI CI Compiler] Resolved Bundle ID: ${packageName || "io.terminai.app"}`,
+      `[TerminAI CI Compiler] Resolved Bundle ID: ${safePackageName}`,
       `[TerminAI CI Compiler] Target SDK Profile: ${targetSdkVersion}, Min SDK Profile: ${minSdkVersion}`,
       `[TerminAI CI Compiler] Target ABI Architectures: [${selectedAbis.join(", ")}]`,
       "[TerminAI CI Compiler] Loading Android SDK Build Tools...",
@@ -184,7 +185,7 @@ export const DeviceBuildStatus: React.FC<DeviceBuildStatusProps> = ({ onSendComm
         setCompiling(false);
         setCompileSuccess(true);
         if (onSendCommand) {
-          onSendCommand(`echo "=== Simulated Android compilation for ${packageName || "io.terminai.app"} finished ===" && touch "${safeApkName}" && ls -la "${safeApkName}"`);
+          onSendCommand(`echo "=== Simulated Android compilation for ${safePackageName} finished ===" && touch "${safeApkName}" && ls -la "${safeApkName}"`);
         }
       }
     }, 450);
