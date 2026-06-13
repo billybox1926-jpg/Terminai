@@ -100,7 +100,16 @@ GEMINI_MODEL=gemini-2.5-flash
 ```
 
 If both provider keys are present, TerminAI uses OpenRouter first.
-## API Bridge
+## Native Android Host
+
+The native Android host lives at `android/`. It is the future app container for TerminAI.
+
+- **Package ID:** `com.billybox.terminai`
+- **One app** — not separate companion apps
+- **Current status:** Early native shell scaffold with simulated API bridge
+- **Web prototype:** Still lives at the repo root (Node.js)
+
+See `docs/android-native-host.md` for the full plan.
 
 TerminAI has one internal API bridge — not separate companion apps. The bridge reads `runtime/api-baseline.json` and `runtime/api-bridge-contract.json` to expose safe, audited capability invocation.
 

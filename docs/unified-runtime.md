@@ -157,6 +157,18 @@ These are separate. The workspace root is where user files live. The runtime roo
 | `mixed` | Runtime root set but assets incomplete |
 | `native-bundled` | Runtime root set with bin/lib assets present |
 
+## Native Android Direction
+
+See [`docs/android-native-host.md`](./android-native-host.md) for the full native host plan.
+
+The native adapter (`android-native`) will eventually replace the `simulated` adapter used by the web prototype. Same contract, same audit log, same allowlisted actions — but real Android system services.
+
+### Adapter Path
+
+1. **simulated** (current web prototype) → safe placeholder data
+2. **android-native** (future native app) → real Android system services
+3. Same `runtime/api-bridge-contract.json` drives both
+
 ## Guardrails
 
 - No separate companion apps unless Android platform restrictions absolutely force it.

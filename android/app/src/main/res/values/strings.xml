@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TerminAI</string>
+    <string name="runtime_mode_native_bundled">native-bundled</string>
+    <string name="runtime_mode_placeholder">placeholder</string>
+    <string name="btn_check_runtime_bundle">Check Runtime Bundle</string>
+    <string name="btn_verify_runtime_integrity">Verify Runtime Integrity</string>
+    <string name="btn_api_bridge_status">API Bridge Status</string>
+    <string name="btn_open_dashboard">Open Dashboard</string>
+    <string name="status_placeholder">Placeholder — runtime assets not yet bundled</string>
+    <string name="status_ready">Ready</string>
+    <string name="status_not_ready">Not Ready</string>
+    <string name="status_blocked">Blocked</string>
+    <string name="status_simulated">Simulated</string>
+    <string name="label_package">Package</string>
+    <string name="label_runtime_mode">Runtime Mode</string>
+    <string name="label_bundle_status">Bundle Status</string>
+    <string name="label_api_bridge">API Bridge</string>
+    <string name="label_integrity">Integrity</string>
+    <string name="label_first_run">First Run</string>
+</resources>

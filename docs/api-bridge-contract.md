@@ -106,7 +106,25 @@ Every invocation of `POST /api/runtime/api/invoke` writes an audit event to `ter
 6. Every invocation is audited
 7. No secrets or large payloads are logged
 
-## Native Android Future Path
+## Native Android Adapter
+
+The `android-native` adapter (future) will use the same contract and endpoints:
+
+- Same `runtime/api-bridge-contract.json`
+- Same `GET /api/runtime/api/bridge/status`
+- Same `POST /api/runtime/api/invoke`
+- Same audit log format (`terminai_api_audit.jsonl`)
+
+The difference is the handler implementations:
+- `battery:read` → `BatteryManager`
+- `clipboard:read/write` → `ClipboardManager`
+- `notifications:send` → `NotificationManager`
+- `vibration:pulse` → `Vibrator` / `VibrationEffect`
+- `network-info:read` → `ConnectivityManager`
+- `sensors:snapshot` → `SensorManager`
+- `intent-open-url:validate` → `Intent` + `PackageManager`
+
+See `docs/android-native-host.md` for the native scaffold.
 
 1. APK ships with `runtime/api-baseline.json` and `runtime/api-bridge-contract.json`
 2. Native app implements `android-native` adapter

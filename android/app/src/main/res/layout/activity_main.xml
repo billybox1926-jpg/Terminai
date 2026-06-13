@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  TerminAI MainActivity layout
+  One app. One dashboard. One runtime.
+-->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/terminai_bg"
+    android:padding="24dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal">
+
+        <!-- App identity header -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/app_name"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:textColor="@color/terminai_primary"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tv_package_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="com.billybox.terminai"
+            android:textSize="12sp"
+            android:textColor="@color/terminai_text_dim"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Runtime status card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@color/terminai_surface"
+            android:padding="16dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Runtime Status"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="@color/terminai_text"
+                android:layout_marginBottom="12dp" />
+
+            <TextView
+                android:id="@+id/tv_runtime_mode"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Mode: placeholder"
+                android:textSize="13sp"
+                android:textColor="@color/terminai_text"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:id="@+id/tv_bundle_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Bundle: not ready"
+                android:textSize="13sp"
+                android:textColor="@color/terminai_warning"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:id="@+id/tv_integrity"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Integrity: not checked"
+                android:textSize="13sp"
+                android:textColor="@color/terminai_text_dim"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:id="@+id/tv_api_bridge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="API Bridge: simulated"
+                android:textSize="13sp"
+                android:textColor="@color/terminai_info"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:id="@+id/tv_first_run"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="First Run: pending"
+                android:textSize="13sp"
+                android:textColor="@color/terminai_text_dim" />
+
+        </LinearLayout>
+
+        <!-- Action buttons -->
+        <Button
+            android:id="@+id/btn_check_runtime_bundle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_check_runtime_bundle"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btn_verify_runtime_integrity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_verify_runtime_integrity"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btn_api_bridge_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_api_bridge_status"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btn_open_dashboard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_open_dashboard"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Footer -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="One app. One dashboard. One runtime."
+            android:textSize="11sp"
+            android:textColor="@color/terminai_text_dim"
+            android:gravity="center" />
+
+    </LinearLayout>
+</ScrollView>

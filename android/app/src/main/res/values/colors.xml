@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="terminai_primary">#10B981</color>
+    <color name="terminai_primary_dark">#059669</color>
+    <color name="terminai_accent">#3B82F6</color>
+    <color name="terminai_accent_dark">#2563EB</color>
+    <color name="terminai_bg">#0A0A0B</color>
+    <color name="terminai_surface">#141417</color>
+    <color name="terminai_text">#E0E0E0</color>
+    <color name="terminai_text_dim">#666666</color>
+    <color name="terminai_success">#10B981</color>
+    <color name="terminai_warning">#F59E0B</color>
+    <color name="terminai_error">#EF4444</color>
+    <color name="terminai_info">#3B82F6</color>
+</resources>
