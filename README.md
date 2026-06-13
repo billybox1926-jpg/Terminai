@@ -1,20 +1,167 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# TerminAI
 
-# Run and deploy your AI Studio app
+**A terminal that thinks with you.**
 
-This contains everything you need to run your app locally.
+TerminAI is a single integrated terminal workspace: graphical shell, package layer, API bridge, file tools, telemetry, scripts, and AI command optimization in one app surface.
 
-View your app in AI Studio: https://ai.studio/apps/44fb5948-b52e-4610-839b-c7227403cfa8
+The goal is not to recreate the split Termux ecosystem where the main app, API app, Boot app, Widget app, Float app, Styling app, and Tasker bridge all live separately. TerminAI should feel locked and loaded from first launch.
 
-## Run Locally
+## Product rule
 
-**Prerequisites:**  Node.js
+One app. One dashboard. One runtime.
 
+TerminAI should bundle or provision the pieces a developer normally has to stitch together manually:
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+- terminal sessions,
+- local shell execution,
+- API/device bridge layer,
+- package bootstrap layer,
+- package status and install UI,
+- file browser and editor,
+- quick scripts and automations,
+- system telemetry,
+- AI command optimizer through OpenRouter or Gemini.
+
+## What it does today
+
+TerminAI currently runs as a local Node/Vite app with an Express backend. It provides:
+
+- a multi-session terminal console,
+- local command execution through the backend,
+- workspace-scoped file browsing, reading, editing, creating, and deleting,
+- system telemetry for CPU, memory, disk, OS, uptime, and working directory,
+- quick script launchers,
+- a package/tool availability panel,
+- install helpers for missing packages on apt-based hosts,
+- optional AI command optimization through OpenRouter or Gemini.
+
+## Locked-and-loaded package direction
+
+The current web workspace can detect and install missing tools. The target native app should go further:
+
+1. ship a curated bootstrap package set,
+2. expose package status in the dashboard,
+3. install/update packages from inside the same UI,
+4. avoid separate companion apps for API features,
+5. keep device/API permissions behind one TerminAI identity.
+
+The first-package baseline is:
+
+```text
+git curl wget jq tmux sqlite3 python3 nodejs npm gcc build-essential make ripgrep htop nano openssh unzip zip tar
+```
+
+## API direction
+
+TerminAI should absorb the useful parts of Termux:API as an internal module, not as a separate app. The dashboard should eventually expose device/API capabilities through a unified panel, including battery/device info, clipboard helpers, notifications, sensors where available, storage/file pickers, and Android intent helpers.
+
+## Important safety note
+
+TerminAI can execute local shell commands and edit files in its configured workspace. Treat it like a local developer console, not a public web app.
+
+Do not expose the running server directly to the public internet unless you add authentication, authorization, transport security, and a stricter execution policy.
+
+By default, file operations should stay scoped to the workspace root. You can set that root explicitly with `TERMINAI_WORKSPACE_ROOT`.
+
+## Local setup
+
+Requirements:
+
+- Node.js 22 or newer
+- npm
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Copy the example environment file:
+
+```bash
+cp .env.example .env.local
+```
+
+Run the development server:
+
+```bash
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+## AI provider setup
+
+TerminAI works without an AI key, but the AI Optimizer needs one provider configured.
+
+Preferred route:
+
+```text
+OPENROUTER_API_KEY=...
+OPENROUTER_MODEL=google/gemini-2.5-flash
+```
+
+Fallback direct Gemini route:
+
+```text
+GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+If both provider keys are present, TerminAI uses OpenRouter first.
+
+## Environment variables
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `PORT` | No | Server port. Defaults to `3000`. |
+| `TERMINAI_WORKSPACE_ROOT` | No | Root directory exposed to the terminal/file APIs. Defaults to the repo working directory. |
+| `TERMINAI_COMMAND_TIMEOUT_MS` | No | Command execution timeout. Defaults to `30000`. |
+| `TERMINAI_COMMAND_MAX_BUFFER` | No | Max command output buffer. Defaults to `1048576`. |
+| `OPENROUTER_API_KEY` | Only for AI optimizer | Enables OpenRouter-backed command optimization. |
+| `OPENROUTER_MODEL` | No | OpenRouter model name. Defaults to `google/gemini-2.5-flash`. |
+| `GEMINI_API_KEY` | Only for AI optimizer fallback | Enables direct Gemini-backed command optimization. |
+| `GEMINI_MODEL` | No | Gemini model name. Defaults to `gemini-2.5-flash`. |
+
+## Scripts
+
+```bash
+npm run dev        # Start the local development server
+npm run build      # Build the Vite client and bundled server
+npm run start      # Run the production build
+npm run typecheck  # Type-check without emitting files
+npm run clean      # Remove generated build output
+```
+
+## Project layout
+
+```text
+.
+├── docs/                # Architecture notes and migration plans
+├── src/                 # React UI
+│   ├── components/      # Terminal, file browser, monitor, editor, scripts
+│   ├── App.tsx          # Main workspace shell
+│   └── types.ts         # Shared frontend types
+├── server.ts            # Express API + Vite integration
+├── index.html           # App shell
+├── package.json         # Node scripts and dependencies
+└── .env.example         # Local configuration template
+```
+
+## Direction
+
+The next serious milestones are:
+
+1. keep the dashboard identity fully TerminAI end-to-end,
+2. keep CI green for type-checking and production builds,
+3. define an artifact telemetry format for Android/APK workflows,
+4. add a device/build status panel,
+5. turn the package/API layer into first-class TerminAI runtime modules.
+
+## License
+
+No license has been selected yet.
