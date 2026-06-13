@@ -11,11 +11,11 @@
     <!-- Minimal permissions for placeholder native host -->
     <!-- VIBRATE: for haptics placeholder -->
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- INTERNET: for network info placeholder -->
+    <!-- INTERNET: for future dashboard/API bridge networking -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- ACCESS_NETWORK_STATE: for network info -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- POST_NOTIFICATIONS: for notification placeholder (Android 13+) -->
+    <!-- POST_NOTIFICATIONS: declared for future runtime permission flow on Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- BLOCKED until explicit runtime permission flow exists:
@@ -27,9 +27,7 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.TerminAI"
         tools:targetApi="34">
