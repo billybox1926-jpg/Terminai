@@ -1,0 +1,6 @@
+{
+  "name": "WebTermux Desktop",
+  "description": "An advanced terminal and graphical user interface terminal emulator with AI-powered command optimizations, integrated file editor, process managers, and native-feeling Linux tools.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
