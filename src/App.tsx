@@ -15,7 +15,8 @@ import {
   Monitor,
   Sliders,
   Award,
-  Settings
+  Settings,
+  Smartphone
 } from "lucide-react";
 import { TerminalConsole } from "./components/TerminalConsole";
 import { AIShellOptimizer } from "./components/AIShellOptimizer";
@@ -25,6 +26,7 @@ import { CodeEditor } from "./components/CodeEditor";
 import { PackageLibrary } from "./components/PackageLibrary";
 import { TermuxSettingsConsole } from "./components/TermuxSettingsConsole";
 import { QuickScriptsLauncher } from "./components/QuickScriptsLauncher";
+import { DeviceBuildStatus } from "./components/DeviceBuildStatus";
 import { SystemStats, TerminalLine, TerminalSession, TermuxProperties } from "./types";
 
 export default function App() {
@@ -43,8 +45,8 @@ export default function App() {
   // Terminal Sync Working Directory
   const [currentCwd, setCurrentCwd] = useState<string>(".");
   
-  // Tab toggler: "terminal" | "ai-copilot" | "scripts" | "settings"
-  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<"terminal" | "ai-copilot" | "scripts" | "settings">("terminal");
+  // Tab toggler: "terminal" | "ai-copilot" | "scripts" | "settings" | "device-build"
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<"terminal" | "ai-copilot" | "scripts" | "settings" | "device-build">("terminal");
 
   // Telemetry statistics
   const [stats, setStats] = useState<SystemStats | null>(null);
@@ -388,6 +390,16 @@ export default function App() {
               <Monitor className="w-3.5 h-3.5" /> Direct Term
             </button>
             <button
+              onClick={() => setActiveWorkspaceTab("device-build")}
+              className={`flex-1 min-w-[95px] py-2 px-3 rounded-md text-xs font-bold font-mono tracking-wide flex items-center justify-center gap-1 transition cursor-pointer ${
+                activeWorkspaceTab === "device-build"
+                  ? 'bg-[#1A1A1E] text-emerald-400 border border-white/10 font-black shadow-[0_0_8px_rgba(16,185,129,0.15)]'
+                  : 'text-white/45 hover:text-white/70'
+              }`}
+            >
+              <Smartphone className="w-3.5 h-3.5" /> Device & Build
+            </button>
+            <button
               onClick={() => setActiveWorkspaceTab("ai-copilot")}
               className={`flex-1 min-w-[95px] py-2 px-3 rounded-md text-xs font-bold font-mono tracking-wide flex items-center justify-center gap-1 transition cursor-pointer ${
                 activeWorkspaceTab === "ai-copilot"
@@ -465,6 +477,15 @@ export default function App() {
               onUpdateProperties={(updated) => setProperties(updated)}
               onSendCommand={(cmd) => {
                 executeCommand(cmd);
+              }}
+            />
+          )}
+
+          {activeWorkspaceTab === "device-build" && (
+            <DeviceBuildStatus 
+              onSendCommand={(cmd) => {
+                executeCommand(cmd);
+                setActiveWorkspaceTab("terminal");
               }}
             />
           )}

@@ -329,27 +329,36 @@ app.post("/api/file-manager/create-folder", (req, res) => {
 // Package manager helper - Query native installations of standard development CLI tools
 app.get("/api/package-manager/list", (req, res) => {
   const tools = [
-    { name: "git", description: "Distributed version control system", category: "Version Control" },
-    { name: "curl", description: "Command line tool for transferring data via URL", category: "Network" },
-    { name: "wget", description: "Non-interactive network downloader", category: "Network" },
-    { name: "jq", description: "Command-line light JSON query processor", category: "Utility" },
-    { name: "tmux", description: "Terminal session multiplexer window manager", category: "Terminal" },
-    { name: "sqlite3", description: "Command-line dynamic shell for SQLite DBs", category: "Database" },
-    { name: "python3", description: "Python interpreter language runtime", category: "Runtime" },
-    { name: "node", description: "Node.js JavaScript server runtime engine", category: "Runtime" },
-    { name: "npm", description: "Node package package indexing manager", category: "Runtime" },
-    { name: "gcc", description: "GNU Compiler C language compiler core", category: "Development" },
-    { name: "make", description: "Build engineering and task automation helper", category: "Development" }
+    { name: "git", queryCmd: "git", description: "Distributed version control system", category: "Version Control" },
+    { name: "curl", queryCmd: "curl", description: "Command line tool for transferring data via URL", category: "Network" },
+    { name: "wget", queryCmd: "wget", description: "Non-interactive network downloader", category: "Network" },
+    { name: "jq", queryCmd: "jq", description: "Command-line light JSON query processor", category: "Utility" },
+    { name: "tmux", queryCmd: "tmux", description: "Terminal session multiplexer window manager", category: "Terminal" },
+    { name: "sqlite3", queryCmd: "sqlite3", description: "Command-line dynamic shell for SQLite DBs", category: "Database" },
+    { name: "python3", queryCmd: "python3", description: "Python interpreter language runtime", category: "Runtime" },
+    { name: "node", queryCmd: "node", description: "Node.js JavaScript server runtime engine", category: "Runtime" },
+    { name: "npm", queryCmd: "npm", description: "Node package package indexing manager", category: "Runtime" },
+    { name: "gcc", queryCmd: "gcc", description: "GNU Compiler C language compiler core", category: "Development" },
+    { name: "build-essential", queryCmd: "make", description: "Meta-package for compiling software (make, gcc, libc)", category: "Development" },
+    { name: "make", queryCmd: "make", description: "Build engineering and task automation helper", category: "Development" },
+    { name: "ripgrep", queryCmd: "rg", description: "Fast, modern line-oriented search tool", category: "Utility" },
+    { name: "htop", queryCmd: "htop", description: "Interactive process viewer and system monitor", category: "Utility" },
+    { name: "nano", queryCmd: "nano", description: "Simple, easy-to-use terminal-based text editor", category: "Development" },
+    { name: "openssh", queryCmd: "ssh", description: "Secure shell client for remote terminal logins", category: "Network" },
+    { name: "java-common", queryCmd: "java", description: "Java language execution environment baseline", category: "Runtime" },
+    { name: "unzip", queryCmd: "unzip", description: "Extraction and diagnostic utility for ZIP archives", category: "Utility" },
+    { name: "zip", queryCmd: "zip", description: "Compression and file packaging utility for ZIP format", category: "Utility" },
+    { name: "tar", queryCmd: "tar", description: "GNU absolute tape archiver for tape/tarball archives", category: "Utility" }
   ];
 
   Promise.all(
     tools.map(tool => {
       return new Promise<any>((resolve) => {
-        exec(`which ${tool.name}`, (err, stdout) => {
+        exec(`which ${tool.queryCmd}`, (err, stdout) => {
           if (err || !stdout) {
-            resolve({ ...tool, installed: false, version: null });
+            resolve({ name: tool.name, description: tool.description, category: tool.category, installed: false, version: null });
           } else {
-            const versionCmd = tool.name === "gcc" ? "gcc --version | head -n 1" : `${tool.name} --version || ${tool.name} -v`;
+            const versionCmd = tool.queryCmd === "gcc" ? "gcc --version | head -n 1" : `${tool.queryCmd} --version || ${tool.queryCmd} -v`;
             exec(versionCmd, (vErr, vStdout) => {
               let version = "Detected";
               try {
@@ -363,7 +372,7 @@ app.get("/api/package-manager/list", (req, res) => {
               } catch (parseErr) {
                 console.error("Failed to parse utility tool version:", parseErr);
               }
-              resolve({ ...tool, installed: true, version });
+              resolve({ name: tool.name, description: tool.description, category: tool.category, installed: true, version });
             });
           }
         });
@@ -374,6 +383,94 @@ app.get("/api/package-manager/list", (req, res) => {
   }).catch(error => {
     res.status(500).json({ error: error.message });
   });
+});
+
+// Device & Build Status API layer (TerminAI runtime modules)
+let deviceClipboard = "TerminAI: Seamless local pipeline active.";
+let deviceSettings = {
+  batteryLevel: 82,
+  batteryTemperature: "28.5 °C",
+  isCharging: false,
+  networkSsid: "TerminAI_Secure_WiFi",
+  permissions: {
+    camera: "granted",
+    gps: "granted",
+    microphone: "prompt",
+    storage: "granted"
+  }
+};
+
+app.get("/api/device/build-status", (req, res) => {
+  const baseDir = process.env.TERMINAI_WORKSPACE_ROOT || process.cwd();
+  const telemetryPath = path.join(baseDir, "terminai_telemetry.json");
+
+  let telemetryData = {
+    appName: "TerminAI Desktop",
+    packageName: "io.terminai.app",
+    versionName: "1.0.4",
+    versionCode: 104,
+    buildProfile: "Debug",
+    targetAbis: ["arm64-v8a", "x86_64"],
+    keystoreSigning: "Self-signed Developer Certificate",
+    minSdkVersion: 26,
+    targetSdkVersion: 34,
+    artifactOutputName: "terminai-debug-v1.0.4.apk",
+    lastCompileTimestamp: new Date().toISOString()
+  };
+
+  try {
+    if (fs.existsSync(telemetryPath)) {
+      const saved = fs.readFileSync(telemetryPath, "utf-8");
+      telemetryData = { ...telemetryData, ...JSON.parse(saved) };
+    } else {
+      fs.writeFileSync(telemetryPath, JSON.stringify(telemetryData, null, 2), "utf-8");
+    }
+  } catch (err) {
+    console.error("Failed to load or initialize telemetry artifact file:", err);
+  }
+
+  res.json({
+    telemetry: telemetryData,
+    device: {
+      ...deviceSettings,
+      clipboard: deviceClipboard,
+      systemSdk: 34,
+      manufacturer: "TerminAI",
+      brand: "Generic Virtual Device",
+      cpuArch: os.arch()
+    }
+  });
+});
+
+app.post("/api/device/build-status", (req, res) => {
+  const baseDir = process.env.TERMINAI_WORKSPACE_ROOT || process.cwd();
+  const telemetryPath = path.join(baseDir, "terminai_telemetry.json");
+  const { telemetry, device } = req.body;
+
+  if (device) {
+    if (typeof device.clipboard === "string") {
+      deviceClipboard = device.clipboard;
+    }
+    if (device.permissions) {
+      deviceSettings.permissions = { ...deviceSettings.permissions, ...device.permissions };
+    }
+    if (typeof device.batteryLevel === "number") {
+      deviceSettings.batteryLevel = device.batteryLevel;
+    }
+    if (typeof device.isCharging === "boolean") {
+      deviceSettings.isCharging = device.isCharging;
+    }
+  }
+
+  if (telemetry) {
+    try {
+      fs.writeFileSync(telemetryPath, JSON.stringify(telemetry, null, 2), "utf-8");
+    } catch (err: any) {
+      return res.status(500).json({ error: `Save failed: ${err.message}` });
+    }
+  }
+
+  res.json({ success: true, message: "Device & Build telemetry updated successfully!" });
 });
 
 // Intelligent Task and Shell Command optimizer using Gemini or OpenRouter

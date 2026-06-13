@@ -68,3 +68,40 @@ export interface OptimizedCommandResult {
   explanation: string;
   alternative: string;
 }
+
+export interface DeviceInfo {
+  batteryLevel: number;
+  batteryTemperature: string;
+  isCharging: boolean;
+  networkSsid: string;
+  clipboard: string;
+  systemSdk: number;
+  manufacturer: string;
+  brand: string;
+  cpuArch: string;
+  permissions: {
+    camera: "granted" | "denied" | "prompt";
+    gps: "granted" | "denied" | "prompt";
+    microphone: "granted" | "denied" | "prompt";
+    storage: "granted" | "denied" | "prompt";
+  };
+}
+
+export interface TelemetryArtifactSpec {
+  appName: string;
+  packageName: string;
+  versionName: string;
+  versionCode: number;
+  buildProfile: string;
+  targetAbis: string[];
+  keystoreSigning: string;
+  minSdkVersion: number;
+  targetSdkVersion: number;
+  artifactOutputName: string;
+  lastCompileTimestamp: string;
+}
+
+export interface DeviceBuildData {
+  telemetry: TelemetryArtifactSpec;
+  device: DeviceInfo;
+}
