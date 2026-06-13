@@ -941,6 +941,46 @@ export const DeviceBuildStatus: React.FC<DeviceBuildStatusProps> = ({ onSendComm
               <span>Last install: {runtimeStatus.state.lastBootstrapInstall ? new Date(runtimeStatus.state.lastBootstrapInstall).toLocaleString() : "never"}</span>
             </div>
 
+            {/* Runtime Bundle status */}
+            {runtimeStatus.bundle && (
+              <div className="space-y-2 pt-2 border-t border-white/5">
+                <span className="text-[9px] text-emerald-400/80 uppercase font-bold tracking-wider">Runtime Bundle</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-[#101012] border border-white/5 p-2 rounded-lg">
+                    <div className="text-[8px] text-white/30 uppercase font-bold">Mode</div>
+                    <div className={`text-[10px] font-extrabold ${runtimeStatus.bundle.mode === "native-bundled" ? "text-emerald-400" : runtimeStatus.bundle.mode === "mixed" ? "text-amber-400" : "text-white/60"}`}>
+                      {runtimeStatus.bundle.mode}
+                    </div>
+                  </div>
+                  <div className="bg-[#101012] border border-white/5 p-2 rounded-lg">
+                    <div className="text-[8px] text-white/30 uppercase font-bold">Bundle</div>
+                    <div className={`text-[10px] font-extrabold ${runtimeStatus.bundle.bundleReady ? "text-emerald-400" : "text-amber-400"}`}>
+                      {runtimeStatus.bundle.bundleReady ? "READY" : "NOT READY"}
+                    </div>
+                  </div>
+                  <div className="bg-[#101012] border border-white/5 p-2 rounded-lg">
+                    <div className="text-[8px] text-white/30 uppercase font-bold">Runtime Root</div>
+                    <div className="text-[10px] font-extrabold text-white/60 truncate">
+                      {runtimeStatus.bundle.runtimeRoot || "not set"}
+                    </div>
+                  </div>
+                  <div className="bg-[#101012] border border-white/5 p-2 rounded-lg">
+                    <div className="text-[8px] text-white/30 uppercase font-bold">Assets</div>
+                    <div className="text-[10px] font-extrabold text-white/60">
+                      {runtimeStatus.bundle.assets?.bin ? "bin " : ""}
+                      {runtimeStatus.bundle.assets?.lib ? "lib " : ""}
+                      {runtimeStatus.bundle.assets?.etc ? "etc " : ""}
+                      {runtimeStatus.bundle.assets?.home ? "home" : ""}
+                      {!runtimeStatus.bundle.assets?.bin && !runtimeStatus.bundle.assets?.lib && "none"}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-[8px] text-white/25 leading-snug">
+                  {runtimeStatus.bundle.notes}
+                </div>
+              </div>
+            )}
+
             <div className="text-[9px] text-white/20 leading-snug pt-2 border-t border-white/5">
               TerminAI is one app — package layer, API bridge, file tools, scripts, and AI optimizer in one dashboard.
               Simulated APIs run in the web prototype. Native Android runtime required for full hardware access.

@@ -912,6 +912,8 @@ app.get("/api/runtime/status", async (_req, res) => {
     };
     writeRuntimeState(freshState);
 
+    const bundleStatus = checkRuntimeBundleStatus();
+
     res.json({
       state: freshState,
       packages: {
@@ -930,6 +932,7 @@ app.get("/api/runtime/status", async (_req, res) => {
         oneAppReady: apiUnavailable === 0,
         capabilities: apiCaps,
       },
+      bundle: bundleStatus,
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -948,6 +951,112 @@ app.post("/api/runtime/first-run/complete", (req, res) => {
     }
     writeRuntimeState(state);
     res.json({ success: true, message: "First run marked complete.", state });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// -------------------------------------------------------
+// RUNTIME BUNDLE — native-bundled runtime manifest
+// -------------------------------------------------------
+
+const RUNTIME_BUNDLE_PATH = path.resolve(__dirname, "runtime", "runtime-bundle.json");
+const RUNTIME_ASSETS_DIR = path.resolve(__dirname, "runtime", "assets");
+
+function readRuntimeBundle(): any {
+  try {
+    if (fs.existsSync(RUNTIME_BUNDLE_PATH)) {
+      const raw = fs.readFileSync(RUNTIME_BUNDLE_PATH, "utf-8");
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error("Failed to read runtime bundle:", e);
+  }
+  return null;
+}
+
+function getRuntimeRoot(): string | null {
+  // 1. Explicit env var
+  if (process.env.TERMINAI_RUNTIME_ROOT) {
+    return path.resolve(process.env.TERMINAI_RUNTIME_ROOT);
+  }
+  // 2. Check candidates from bundle manifest
+  const bundle = readRuntimeBundle();
+  if (bundle?.installRootCandidates) {
+    for (const candidate of bundle.installRootCandidates) {
+      let resolved = candidate;
+      // Expand $TERMINAI_RUNTIME_ROOT
+      if (resolved.startsWith("$TERMINAI_RUNTIME_ROOT")) {
+        continue; // already checked above
+      }
+      // Expand ~
+      if (resolved.startsWith("~/")) {
+        resolved = path.join(os.homedir(), resolved.slice(2));
+      }
+      // Make relative paths absolute
+      if (!path.isAbsolute(resolved)) {
+        resolved = path.resolve(process.cwd(), resolved);
+      }
+      // Check if directory exists
+      if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+        return resolved;
+      }
+    }
+  }
+  return null;
+}
+
+function checkRuntimeBundleStatus(): any {
+  const bundle = readRuntimeBundle();
+  const runtimeRoot = getRuntimeRoot();
+
+  const assetsExist = fs.existsSync(RUNTIME_ASSETS_DIR);
+  const binDir = path.join(RUNTIME_ASSETS_DIR, "bin");
+  const libDir = path.join(RUNTIME_ASSETS_DIR, "lib");
+  const etcDir = path.join(RUNTIME_ASSETS_DIR, "etc");
+  const homeDir = path.join(RUNTIME_ASSETS_DIR, "home");
+
+  const binExists = fs.existsSync(binDir);
+  const libExists = fs.existsSync(libDir);
+  const etcExists = fs.existsSync(etcDir);
+  const homeExists = fs.existsSync(homeDir);
+
+  // Determine mode
+  let mode = "host-bootstrap";
+  if (runtimeRoot && assetsExist && binExists) {
+    mode = "native-bundled";
+  } else if (runtimeRoot || (assetsExist && binExists)) {
+    mode = "mixed";
+  }
+
+  const bundleReady = !!(runtimeRoot && assetsExist && binExists && libExists);
+
+  return {
+    bundle,
+    runtimeRoot,
+    workspaceRoot: process.env.TERMINAI_WORKSPACE_ROOT || process.cwd(),
+    mode,
+    bundleReady,
+    assets: {
+      base: assetsExist,
+      bin: binExists,
+      lib: libExists,
+      etc: etcExists,
+      home: homeExists,
+    },
+    notes: bundleReady
+      ? "Native-bundled runtime detected. TerminAI can use bundled assets."
+      : runtimeRoot
+        ? "Runtime root set but assets incomplete. Falling back to host package manager."
+        : "No bundled runtime detected. Using host package manager (apt/pkg) for bootstrap.",
+  };
+}
+
+// GET /api/runtime/bundle/status
+app.get("/api/runtime/bundle/status", (_req, res) => {
+  try {
+    const status = checkRuntimeBundleStatus();
+    res.json(status);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

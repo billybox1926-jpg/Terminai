@@ -108,6 +108,44 @@ The runtime state file (`terminai_runtime_state.json`) tracks:
 
 - `TERMINAI_AUTO_BOOTSTRAP=false` — Set to `true` to enable automatic package installation on startup. Default is `false` (safe mode: check only, prompt user).
 
+## Runtime Bundle Manifest
+
+The runtime bundle (`runtime/runtime-bundle.json`) defines how TerminAI packages its runtime:
+
+| Field | Purpose |
+| --- | --- |
+| `bundleName` | Identifier for the runtime bundle |
+| `bundleVersion` | Semantic version of the bundle |
+| `targetMode` | `native-bundled` — the goal is to ship runtime inside the app |
+| `packageManifest` | Path to `runtime/package-baseline.json` |
+| `apiManifest` | Path to `runtime/api-baseline.json` |
+| `installRootCandidates` | Ordered list of paths where runtime may be rooted |
+| `bootstrapStrategy` | Rules for how to provision packages |
+
+### Runtime Root vs Workspace Root
+
+- `TERMINAI_WORKSPACE_ROOT` = user/project files (terminal workspace, file browser)
+- `TERMINAI_RUNTIME_ROOT` = bundled/provisioned runtime files (binaries, libs, etc.)
+
+These are separate. The workspace root is where user files live. The runtime root is where the TerminAI runtime environment lives.
+
+### Bundle Status Endpoint
+
+`GET /api/runtime/bundle/status` returns:
+- Bundle manifest data
+- Whether runtime assets directories exist
+- Detected `TERMINAI_RUNTIME_ROOT` if set
+- `bundleReady` boolean
+- Notes explaining current mode
+
+### Runtime Modes
+
+| Mode | Condition |
+| --- | --- |
+| `host-bootstrap` | No bundled runtime detected, using host package manager |
+| `mixed` | Runtime root set but assets incomplete |
+| `native-bundled` | Runtime root set with bin/lib assets present |
+
 ## Guardrails
 
 - No separate companion apps unless Android platform restrictions absolutely force it.

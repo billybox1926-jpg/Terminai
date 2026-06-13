@@ -236,6 +236,12 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
               <span>First run: {runtimeStatus.state.firstRunCompleted ? "complete" : "pending"}</span>
             </div>
           )}
+          {runtimeStatus?.bundle && (
+            <div className="mt-1 pt-1 border-t border-white/5 flex items-center justify-between text-[9px] text-white/25">
+              <span>Source: {runtimeStatus.bundle.mode === "native-bundled" ? "bundled runtime" : runtimeStatus.bundle.mode === "mixed" ? "mixed" : `host (${pkgManager})`}</span>
+              <span>Bundle: {runtimeStatus.bundle.bundleReady ? "ready" : "not ready"}</span>
+            </div>
+          )}
         </div>
       )}
 

@@ -100,7 +100,25 @@ GEMINI_MODEL=gemini-2.5-flash
 ```
 
 If both provider keys are present, TerminAI uses OpenRouter first.
-## Runtime Bootstrap API
+## Runtime Bundle
+
+The runtime bundle manifest (`runtime/runtime-bundle.json`) defines how TerminAI packages its runtime for native deployment:
+
+```text
+runtime/
+├── runtime-bundle.json       # Bundle manifest (source of truth)
+├── package-baseline.json     # Package manifest
+├── api-baseline.json         # API bridge manifest
+├── runtime-state.example.json # Example runtime state
+└── assets/                   # Placeholder for native bundled runtime
+    ├── README.md
+    ├── bin/
+    ├── lib/
+    ├── etc/
+    └── home/
+```
+
+See `docs/native-runtime-bootstrap.md` for the full native Android locked-and-loaded plan.
 
 | Endpoint | Method | Purpose |
 | --- | --- | --- |
@@ -119,6 +137,7 @@ If both provider keys are present, TerminAI uses OpenRouter first.
 | `TERMINAI_WORKSPACE_ROOT` | No | Root directory exposed to the terminal/file APIs. Defaults to the repo working directory. |
 | `TERMINAI_COMMAND_TIMEOUT_MS` | No | Command execution timeout. Defaults to `30000`. |
 | `TERMINAI_COMMAND_MAX_BUFFER` | No | Max command output buffer. Defaults to `1048576`. |
+| `TERMINAI_RUNTIME_ROOT` | No | Root directory for bundled/provisioned runtime files. Separate from `TERMINAI_WORKSPACE_ROOT`. |
 | `TERMINAI_AUTO_BOOTSTRAP` | No | Auto-install missing baseline packages on startup. Defaults to `false`. |
 | `OPENROUTER_API_KEY` | Only for AI optimizer | Enables OpenRouter-backed command optimization. |
 | `OPENROUTER_MODEL` | No | OpenRouter model name. Defaults to `google/gemini-2.5-flash`. |
@@ -130,7 +149,9 @@ If both provider keys are present, TerminAI uses OpenRouter first.
 * `npm run build`      # Build the Vite client and bundled server
 * `npm run start`      # Run the production build
 * `npm run typecheck`  # Type-check without emitting files
+* `npm run check`      # Type-check and build
 * `npm run clean`      # Remove generated build output
+* `node scripts/runtime-status.mjs` # Print runtime config summary (no server)
 
 ## Project layout
 ```text

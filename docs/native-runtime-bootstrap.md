@@ -113,6 +113,51 @@ The native app should maintain the same `terminai_runtime_state.json` structure:
 3. **Native beta** → adds battery, clipboard, notifications, vibration
 4. **Native 1.0** → full API bridge, all capabilities available or clearly marked simulated
 
+## Runtime Bundle
+
+The runtime bundle manifest (`runtime/runtime-bundle.json`) defines how TerminAI packages its runtime:
+
+```json
+{
+  "bundleName": "terminai-runtime",
+  "bundleVersion": "0.1.0",
+  "targetMode": "native-bundled",
+  "packageManifest": "runtime/package-baseline.json",
+  "apiManifest": "runtime/api-baseline.json",
+  "installRootCandidates": [
+    "$TERMINAI_RUNTIME_ROOT",
+    "./terminai-runtime",
+    "~/.terminai/runtime"
+  ]
+}
+```
+
+### Runtime Assets
+
+The `runtime/assets/` directory is a placeholder for future native bundled runtime:
+
+- `bin/` — Runtime binaries (busybox, coreutils, etc.)
+- `lib/` — Shared libraries and support files
+- `etc/` — Configuration files and defaults
+- `home/` — Default home directory template
+
+**Do not commit large binary runtime payloads yet.** These will be populated when the native Android build pipeline is established.
+
+### Runtime Root vs Workspace Root
+
+- `TERMINAI_WORKSPACE_ROOT` = user/project files (terminal workspace, file browser)
+- `TERMINAI_RUNTIME_ROOT` = bundled/provisioned runtime files (binaries, libs)
+
+These are separate concerns. The workspace root is where user files live. The runtime root is where the TerminAI runtime environment lives.
+
+### Bootstrap Strategy
+
+The native app should:
+1. Check if `TERMINAI_RUNTIME_ROOT` is set and contains runtime assets
+2. If yes → use native-bundled mode (add `$TERMINAI_RUNTIME_ROOT/bin` to PATH)
+3. If no → fall back to host package manager (pkg on Termux, apt-get on Debian)
+4. Never silently install unless `TERMINAI_AUTO_BOOTSTRAP=true`
+
 ## What TerminAI Does NOT Do
 
 - Does NOT create separate companion apps

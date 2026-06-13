@@ -1,0 +1,21 @@
+{
+  "bundleName": "terminai-runtime",
+  "bundleVersion": "0.1.0",
+  "targetMode": "native-bundled",
+  "packageManifest": "runtime/package-baseline.json",
+  "apiManifest": "runtime/api-baseline.json",
+  "stateFile": "terminai_runtime_state.json",
+  "telemetryFile": "terminai_telemetry.json",
+  "installRootCandidates": [
+    "$TERMINAI_RUNTIME_ROOT",
+    "./terminai-runtime",
+    "~/.terminai/runtime"
+  ],
+  "bootstrapStrategy": {
+    "checkExisting": true,
+    "preferBundled": true,
+    "fallbackTermux": "pkg",
+    "fallbackDebian": "apt-get",
+    "neverSilent": true
+  }
+}
