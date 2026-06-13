@@ -89,7 +89,7 @@ Open:
 
 ## Build and release artifacts
 
-GitHub Actions is the official build gate for TerminAI. Local builds are useful for development, but release artifacts should come from Actions runs on GitHub.
+GitHub Actions is the official build gate for TerminAI. Local builds are useful for development, but release artifacts should come from Actions runs on GitHub. The web gate now validates runtime manifests, runs real Node tests, and smoke-tests command/file API safety before artifacts are trusted.
 
 ### CI artifacts
 

@@ -17,6 +17,8 @@ dotenv.config();
 // Initialize express app
 const app = express();
 const PORT = Number.parseInt(process.env.PORT ?? "3000", 10);
+const COMMAND_TIMEOUT_MS = Number.parseInt(process.env.TERMINAI_COMMAND_TIMEOUT_MS ?? "30000", 10);
+const COMMAND_MAX_BUFFER = Number.parseInt(process.env.TERMINAI_COMMAND_MAX_BUFFER ?? "1048576", 10);
 
 // Body parser
 app.use(express.json());
@@ -142,7 +144,15 @@ app.post("/api/terminal/execute", (req, res) => {
   const fullCommand = `${command} ; echo "" ; echo "${marker}" ; pwd`;
 
   try {
-    exec(fullCommand, { cwd: activeCwd, env: { ...process.env, LANG: "en_US.UTF-8" } }, (error, stdout, stderr) => {
+    exec(
+      fullCommand,
+      {
+        cwd: activeCwd,
+        env: { ...process.env, LANG: "en_US.UTF-8" },
+        timeout: Number.isFinite(COMMAND_TIMEOUT_MS) && COMMAND_TIMEOUT_MS > 0 ? COMMAND_TIMEOUT_MS : 30000,
+        maxBuffer: Number.isFinite(COMMAND_MAX_BUFFER) && COMMAND_MAX_BUFFER > 0 ? COMMAND_MAX_BUFFER : 1048576
+      },
+      (error, stdout, stderr) => {
       try {
         const stdoutStr = stdout || "";
         // Split the stdout string by separator to capture CLI output vs ending directory

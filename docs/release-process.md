@@ -14,10 +14,13 @@ It verifies:
 
 - Node 22 dependency installation with `npm ci`
 - TypeScript type-checking
+- runtime manifest validation with `npm run runtime:validate`
+- real automated tests with `npm test`
 - runtime manifest status output
 - production web/client and bundled server build
 - runtime bundle lock generation
 - production server smoke test, including `/api/runtime/status`
+- command/file API safety smoke tests with `npm run security:smoke`
 - `terminai-web-dist` artifact upload
 
 The web gate protects the local terminal workspace, PackageLibrary, Device & Build UI surface, runtime manifests, API bridge routes, and production server bundle.
@@ -50,17 +53,20 @@ The release workflow performs the same build-gate checks needed for a releasable
 
 1. Install web dependencies with `npm ci`.
 2. Run TypeScript type-checking.
-3. Print runtime manifest status.
-4. Build the production web/client and server dist.
-5. Run `npm run runtime:bundle`.
-6. Smoke-test the production server and `/api/runtime/status`.
-7. Run Android unit tests.
-8. Run Android lint.
-9. Build the Android debug APK.
-10. Build the Android unsigned release APK.
-11. Package versioned artifacts.
-12. Upload workflow artifacts.
-13. If triggered by a tag, create a GitHub Release and attach artifacts.
+3. Validate runtime manifests with `npm run runtime:validate`.
+4. Run real automated tests with `npm test`.
+5. Print runtime manifest status.
+6. Build the production web/client and server dist.
+7. Run `npm run runtime:bundle`.
+8. Smoke-test the production server and `/api/runtime/status`.
+9. Run command/file API safety smoke tests.
+10. Run Android unit tests.
+11. Run Android lint.
+12. Build the Android debug APK.
+13. Build the Android unsigned release APK.
+14. Package versioned artifacts.
+15. Upload workflow artifacts.
+16. If triggered by a tag, create a GitHub Release and attach artifacts.
 
 ## Versioned artifacts
 
@@ -104,6 +110,15 @@ git push origin v0.1.0
 
 Do not tag a commit just because it built locally. The release source should be a commit already validated by GitHub Actions.
 
+## Branch protection
+
+Protect `main` in GitHub repository settings and require these status checks before merging:
+
+- `TerminAI Web CI`
+- `TerminAI Android Native`
+
+Do not treat type-checking alone as the only test signal. The web gate now includes runtime manifest validation, Node automated tests, production server smoke testing, and command/file API safety smoke testing.
+
 ## Android signing status
 
 The release workflow intentionally does not require signing secrets yet.
@@ -116,6 +131,9 @@ Signed Android release builds are tracked separately in issue #4.
 
 - #4 — signed Android release path
 - #5 — APK install smoke test
-- #6 — runtime integrity checks
-- #8 — command/file API safety regression tests
-- #12 — real automated tests beyond typecheck
+
+## Completed hardening references
+
+- #6 — runtime integrity checks are now enforced by `npm run runtime:validate` in Web CI and Release.
+- #8 — command/file API safety smoke tests are now part of the web and release gates.
+- #12 — real Node tests run with `npm test`; type-checking is no longer the only test signal.

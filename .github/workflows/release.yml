@@ -50,6 +50,12 @@ jobs:
       - name: Type-check web/server code
         run: npm run typecheck
 
+      - name: Validate runtime manifests
+        run: npm run runtime:validate
+
+      - name: Run automated tests
+        run: npm test
+
       - name: Runtime manifest status
         run: npm run runtime:status
 
@@ -74,6 +80,9 @@ jobs:
           done
           curl -fsS "http://127.0.0.1:3099/" >/dev/null
           curl -fsS "http://127.0.0.1:3099/api/runtime/status" >/dev/null
+
+      - name: Run command and file API safety smoke tests
+        run: npm run security:smoke
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

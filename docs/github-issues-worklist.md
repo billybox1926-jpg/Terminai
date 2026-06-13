@@ -6,7 +6,7 @@ Use this as the backlog to create in GitHub Issues once auth is working. Suggest
 
 Labels: `ci`, `web`, `priority:high`
 
-TerminAI needs a required GitHub Actions gate for the Node/Vite/Express side.
+TerminAI needs a required GitHub Actions gate for the Node/Vite/Express side. The workflow now exists and includes runtime validation, real tests, build, bundle, and safety smoke checks. Remaining work: configure GitHub branch protection for `main` to require `TerminAI Web CI` and `TerminAI Android Native`.
 
 Acceptance criteria:
 - `TerminAI Web CI` runs on pull requests to `main`.
@@ -88,6 +88,8 @@ Labels: `runtime`, `ci`, `priority:high`
 
 GitHub issue: [#6](https://github.com/billybox1926-jpg/Terminai/issues/6)
 
+Status: implemented by the runtime manifest validator and wired into Web CI and Release.
+
 Runtime manifests are source-of-truth files and should fail CI when malformed.
 
 Acceptance criteria:
@@ -115,6 +117,8 @@ Acceptance criteria:
 Labels: `security`, `web`, `priority:high`
 
 GitHub issue: [#8](https://github.com/billybox1926-jpg/Terminai/issues/8)
+
+Status: implemented by helper tests and `scripts/smoke-security.mjs` in Web CI and Release.
 
 TerminAI executes shell commands and edits files, so guardrails need tests.
 
@@ -169,6 +173,8 @@ Acceptance criteria:
 Labels: `web`, `android`, `ci`, `priority:medium`
 
 GitHub issue: [#12](https://github.com/billybox1926-jpg/Terminai/issues/12)
+
+Status: implemented with Node built-in `node --test`; typecheck is no longer the only test signal.
 
 `npm run lint` currently aliases typecheck. Add actual behavior-level checks before the app grows.
 
