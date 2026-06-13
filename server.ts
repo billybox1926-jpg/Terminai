@@ -448,7 +448,7 @@ app.get("/api/package-manager/baseline", (_req, res) => {
       return res.status(404).json({ error: "Package baseline manifest not found." });
     }
     const raw = fs.readFileSync(manifestPath, "utf-8");
-    res.json(JSON.parse(raw));
+    res.json({ packages: JSON.parse(raw) });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -467,8 +467,8 @@ app.post("/api/package-manager/install", (req, res) => {
   try {
     if (fs.existsSync(manifestPath)) {
       const raw = fs.readFileSync(manifestPath, "utf-8");
-      const manifest = JSON.parse(raw);
-      packages = manifest.packages || [];
+      const parsed = JSON.parse(raw);
+      packages = Array.isArray(parsed) ? parsed : (parsed.packages || []);
     }
   } catch (error: any) {
     return res.status(500).json({ error: `Failed to read baseline manifest: ${error.message}` });
