@@ -2,93 +2,108 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import os from "os";
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
+import { randomUUID } from "crypto";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 
+dotenv.config({ path: ".env.local" });
 dotenv.config();
 
-// Initialize express app
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
+const WORKSPACE_ROOT = path.resolve(process.env.TERMINAI_WORKSPACE_ROOT || process.cwd());
+const COMMAND_TIMEOUT_MS = Number(process.env.TERMINAI_COMMAND_TIMEOUT_MS || 30_000);
+const COMMAND_MAX_BUFFER = Number(process.env.TERMINAI_COMMAND_MAX_BUFFER || 1024 * 1024);
 
-// Body parser
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 
-// Lazy-loaded Gemini Client following guidance
 let aiClient: GoogleGenAI | null = null;
 
 function getGeminiClient(): GoogleGenAI {
   if (!aiClient) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error("GEMINI_API_KEY environment variable is not defined. Please configure secrets.");
+      throw new Error("GEMINI_API_KEY is not configured. Set it only when AI command optimization is needed.");
     }
-    aiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
+    aiClient = new GoogleGenAI({ apiKey });
   }
   return aiClient;
+}
+
+function isInsideWorkspace(candidatePath: string): boolean {
+  const resolved = path.resolve(candidatePath);
+  return resolved === WORKSPACE_ROOT || resolved.startsWith(WORKSPACE_ROOT + path.sep);
+}
+
+function resolveWorkspacePath(inputPath = "."): string {
+  const resolved = path.resolve(WORKSPACE_ROOT, inputPath);
+  if (!isInsideWorkspace(resolved)) {
+    throw new Error("Access denied: path escapes TerminAI workspace root.");
+  }
+  return resolved;
+}
+
+function firstVersionLine(output: string): string {
+  const firstLine = output.trim().split("\n")[0] || "Detected";
+  const match = firstLine.match(/(\d+\.\d+(\.\d+)?)/);
+  return match ? match[0] : firstLine.slice(0, 40);
 }
 
 // ----------------------------------------------------
 // API ROUTES
 // ----------------------------------------------------
 
-// Health Check
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok" });
+app.get("/api/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    app: "TerminAI",
+    workspaceRoot: WORKSPACE_ROOT,
+  });
 });
 
-// Real-time System Statistics (CPU, Memory, Disk, Environment)
-app.get("/api/system/stats", (req, res) => {
+app.get("/api/system/stats", (_req, res) => {
   try {
     const memoryFree = os.freemem();
     const memoryTotal = os.totalmem();
     const memoryUsage = ((memoryTotal - memoryFree) / memoryTotal) * 100;
-    const uptime = os.uptime();
     const loadAvg = os.loadavg();
-    const osType = os.type();
-    const osRelease = os.release();
 
-    exec("df -h . | tail -1", (err, stdout) => {
-      let diskInfo = { total: "10GB", used: "2GB", free: "8GB", percent: "20%" };
+    execFile("df", ["-h", WORKSPACE_ROOT], { timeout: 5000 }, (err, stdout) => {
+      let diskInfo = { total: "unknown", used: "unknown", free: "unknown", percent: "unknown" };
       if (!err && stdout) {
-        const parts = stdout.trim().split(/\s+/);
+        const lines = stdout.trim().split("\n");
+        const parts = lines[lines.length - 1]?.trim().split(/\s+/) || [];
         if (parts.length >= 5) {
           diskInfo = {
             total: parts[1],
             used: parts[2],
             free: parts[3],
-            percent: parts[4]
+            percent: parts[4],
           };
         }
       }
+
       res.json({
         cpu: {
-          load: parseFloat(loadAvg[0].toFixed(2)),
+          load: parseFloat((loadAvg[0] || 0).toFixed(2)),
           cores: os.cpus().length,
-          model: os.cpus()[0]?.model || "Intel/AMD CPU"
+          model: os.cpus()[0]?.model || "Unknown CPU",
         },
         memory: {
-          total: (memoryTotal / (1024 * 1024 * 1024)).toFixed(2) + " GB",
-          free: (memoryFree / (1024 * 1024 * 1024)).toFixed(2) + " GB",
-          percent: parseFloat(memoryUsage.toFixed(1))
+          total: `${(memoryTotal / (1024 * 1024 * 1024)).toFixed(2)} GB`,
+          free: `${(memoryFree / (1024 * 1024 * 1024)).toFixed(2)} GB`,
+          percent: parseFloat(memoryUsage.toFixed(1)),
         },
         disk: diskInfo,
-        uptime,
+        uptime: os.uptime(),
         os: {
-          type: osType,
-          release: osRelease,
-          platform: os.platform()
+          type: os.type(),
+          release: os.release(),
+          platform: os.platform(),
         },
-        cwd: process.cwd()
+        cwd: WORKSPACE_ROOT,
       });
     });
   } catch (error: any) {
@@ -96,258 +111,230 @@ app.get("/api/system/stats", (req, res) => {
   }
 });
 
-// Secure Real Terminal Command Executor with Smart Directory Tracking
 app.post("/api/terminal/execute", (req, res) => {
-  const { command, cwd } = req.body;
-  if (!command) {
-    return res.status(400).json({ error: "Command is required" });
+  const { command, cwd } = req.body as { command?: string; cwd?: string };
+  if (!command?.trim()) {
+    return res.status(400).json({ error: "Command is required." });
   }
 
-  const activeCwd = cwd || process.cwd();
-  const marker = "__CWD_SEPARATOR_44fb5948__";
-  
-  // We couple the user command and always print pwd after. Use semicolon to execute pwd even if preceding fails.
-  const fullCommand = `${command} ; echo "" ; echo "${marker}" ; pwd`;
+  let activeCwd: string;
+  try {
+    activeCwd = resolveWorkspacePath(cwd || ".");
+  } catch (error: any) {
+    return res.status(403).json({ error: error.message });
+  }
 
-  exec(fullCommand, { cwd: activeCwd, env: { ...process.env, LANG: "en_US.UTF-8" } }, (error, stdout, stderr) => {
-    // Split the stdout string by separator to capture CLI output vs ending directory
-    const parts = stdout.split(marker);
-    let commandOutput = parts[0] || "";
-    let finalCwd = parts[1] ? parts[1].trim() : activeCwd;
+  const marker = `__TERMINAI_CWD_${randomUUID().replace(/-/g, "")}__`;
+  const fullCommand = `${command}\nCOMMAND_STATUS=$?\necho ""\necho "${marker}"\npwd\nexit $COMMAND_STATUS`;
 
-    // Clean up trailing and leading spaces/newlines from system output
-    commandOutput = commandOutput.replace(/[\r\n]+$/, "");
+  exec(
+    fullCommand,
+    {
+      cwd: activeCwd,
+      env: { ...process.env, LANG: "en_US.UTF-8" },
+      timeout: COMMAND_TIMEOUT_MS,
+      maxBuffer: COMMAND_MAX_BUFFER,
+    },
+    (error: any, stdout, stderr) => {
+      const parts = stdout.split(marker);
+      const commandOutput = (parts[0] || "").replace(/[\r\n]+$/, "");
+      const reportedCwd = parts[1]?.trim();
+      const finalCwd = reportedCwd && isInsideWorkspace(reportedCwd) ? path.resolve(reportedCwd) : activeCwd;
 
-    // Gracefully clamp directory resolved checks
-    if (!fs.existsSync(finalCwd) || !fs.statSync(finalCwd).isDirectory()) {
-      finalCwd = activeCwd;
-    }
-
-    res.json({
-      stdout: commandOutput,
-      stderr: stderr || "",
-      code: error ? (error.code ?? 1) : 0,
-      newCwd: finalCwd
-    });
-  });
+      res.json({
+        stdout: commandOutput,
+        stderr: stderr || "",
+        code: error ? error.code ?? 1 : 0,
+        newCwd: finalCwd,
+        timedOut: Boolean(error?.killed),
+      });
+    },
+  );
 });
 
-// Local file browser APIs (File Tree explorer)
 app.post("/api/file-manager/list", (req, res) => {
-  const { dir } = req.body;
-  const baseDir = process.cwd();
-  const targetDir = dir ? path.resolve(baseDir, dir) : baseDir;
+  const { dir } = req.body as { dir?: string };
+  let targetDir: string;
 
-  // Sandbox check to avoid listing outside of dev environment folder if restrictive
-  if (!targetDir.startsWith(baseDir)) {
-    return res.status(403).json({ error: "Access Denied: Sandbox escape prevented." });
+  try {
+    targetDir = resolveWorkspacePath(dir || ".");
+  } catch (error: any) {
+    return res.status(403).json({ error: error.message });
   }
 
   try {
     if (!fs.existsSync(targetDir)) {
-      return res.status(404).json({ error: "Directory not found" });
+      return res.status(404).json({ error: "Directory not found." });
     }
-    const files = fs.readdirSync(targetDir);
-    const results = files.map(file => {
+
+    const files = fs.readdirSync(targetDir).map((file) => {
       const fullPath = path.join(targetDir, file);
-      try {
-        const stat = fs.statSync(fullPath);
-        const relativePath = path.relative(baseDir, fullPath);
-        return {
-          name: file,
-          path: relativePath === "" ? "." : relativePath,
-          type: stat.isDirectory() ? "directory" : "file",
-          size: stat.size,
-          mtime: stat.mtime.toISOString(),
-        };
-      } catch {
-        return {
-          name: file,
-          path: path.relative(baseDir, fullPath),
-          type: "file",
-          size: 0,
-          mtime: new Date().toISOString()
-        };
-      }
+      const stat = fs.statSync(fullPath);
+      const relativePath = path.relative(WORKSPACE_ROOT, fullPath);
+      return {
+        name: file,
+        path: relativePath === "" ? "." : relativePath,
+        type: stat.isDirectory() ? "directory" : "file",
+        size: stat.size,
+        mtime: stat.mtime.toISOString(),
+      };
     });
+
     res.json({
-      files: results,
-      currentFolder: path.relative(baseDir, targetDir) || "."
+      files,
+      currentFolder: path.relative(WORKSPACE_ROOT, targetDir) || ".",
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// File reader
 app.post("/api/file-manager/read", (req, res) => {
-  const { filePath } = req.body;
-  if (!filePath) return res.status(400).json({ error: "File path is required" });
-
-  const baseDir = process.cwd();
-  const resolvedPath = path.resolve(baseDir, filePath);
-
-  if (!resolvedPath.startsWith(baseDir)) {
-    return res.status(403).json({ error: "Access Denied." });
-  }
+  const { filePath } = req.body as { filePath?: string };
+  if (!filePath) return res.status(400).json({ error: "File path is required." });
 
   try {
+    const resolvedPath = resolveWorkspacePath(filePath);
     if (!fs.existsSync(resolvedPath)) {
-      return res.status(404).json({ error: "File not found" });
+      return res.status(404).json({ error: "File not found." });
     }
-    const content = fs.readFileSync(resolvedPath, "utf-8");
-    res.json({ content });
+    if (!fs.statSync(resolvedPath).isFile()) {
+      return res.status(400).json({ error: "Path is not a file." });
+    }
+    res.json({ content: fs.readFileSync(resolvedPath, "utf-8") });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    const status = error.message?.includes("Access denied") ? 403 : 500;
+    res.status(status).json({ error: error.message });
   }
 });
 
-// File writer
 app.post("/api/file-manager/write", (req, res) => {
-  const { filePath, content } = req.body;
-  if (!filePath) return res.status(400).json({ error: "File path is required" });
-
-  const baseDir = process.cwd();
-  const resolvedPath = path.resolve(baseDir, filePath);
-
-  if (!resolvedPath.startsWith(baseDir)) {
-    return res.status(403).json({ error: "Access Denied." });
-  }
+  const { filePath, content } = req.body as { filePath?: string; content?: string };
+  if (!filePath) return res.status(400).json({ error: "File path is required." });
 
   try {
-    const parentDir = path.dirname(resolvedPath);
-    if (!fs.existsSync(parentDir)) {
-      fs.mkdirSync(parentDir, { recursive: true });
-    }
+    const resolvedPath = resolveWorkspacePath(filePath);
+    fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
     fs.writeFileSync(resolvedPath, content || "", "utf-8");
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    const status = error.message?.includes("Access denied") ? 403 : 500;
+    res.status(status).json({ error: error.message });
   }
 });
 
-// File/Folder deleter
 app.post("/api/file-manager/delete", (req, res) => {
-  const { targetPath } = req.body;
-  if (!targetPath) return res.status(400).json({ error: "Path is required" });
-
-  const baseDir = process.cwd();
-  const resolvedPath = path.resolve(baseDir, targetPath);
-
-  if (!resolvedPath.startsWith(baseDir) || resolvedPath === baseDir) {
-    return res.status(403).json({ error: "Access Denied: Deletion restricted." });
-  }
+  const { targetPath } = req.body as { targetPath?: string };
+  if (!targetPath) return res.status(400).json({ error: "Path is required." });
 
   try {
-    if (fs.existsSync(resolvedPath)) {
-      const stat = fs.statSync(resolvedPath);
-      if (stat.isDirectory()) {
-        fs.rmSync(resolvedPath, { recursive: true, force: true });
-      } else {
-        fs.unlinkSync(resolvedPath);
-      }
-      res.json({ success: true });
-    } else {
-      res.status(404).json({ error: "File/Folder does not exist." });
+    const resolvedPath = resolveWorkspacePath(targetPath);
+    if (resolvedPath === WORKSPACE_ROOT) {
+      return res.status(403).json({ error: "Access denied: cannot delete workspace root." });
     }
+    if (!fs.existsSync(resolvedPath)) {
+      return res.status(404).json({ error: "File or folder does not exist." });
+    }
+
+    const stat = fs.statSync(resolvedPath);
+    if (stat.isDirectory()) {
+      fs.rmSync(resolvedPath, { recursive: true, force: true });
+    } else {
+      fs.unlinkSync(resolvedPath);
+    }
+    res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    const status = error.message?.includes("Access denied") ? 403 : 500;
+    res.status(status).json({ error: error.message });
   }
 });
 
-// Folder creator
 app.post("/api/file-manager/create-folder", (req, res) => {
-  const { dirPath, name } = req.body;
-  if (!name) return res.status(400).json({ error: "Folder name is required" });
-
-  const baseDir = process.cwd();
-  const parentFolder = dirPath ? path.resolve(baseDir, dirPath) : baseDir;
-  const targetFolder = path.join(parentFolder, name);
-
-  if (!targetFolder.startsWith(baseDir)) {
-    return res.status(403).json({ error: "Access Denied." });
+  const { dirPath, name } = req.body as { dirPath?: string; name?: string };
+  if (!name) return res.status(400).json({ error: "Folder name is required." });
+  if (name.includes(path.sep) || name.includes("..")) {
+    return res.status(400).json({ error: "Folder name must be a simple directory name." });
   }
 
   try {
-    if (!fs.existsSync(targetFolder)) {
-      fs.mkdirSync(targetFolder, { recursive: true });
-      res.json({ success: true });
-    } else {
-      res.status(400).json({ error: "Folder already exists" });
+    const parentFolder = resolveWorkspacePath(dirPath || ".");
+    const targetFolder = resolveWorkspacePath(path.join(path.relative(WORKSPACE_ROOT, parentFolder), name));
+    if (fs.existsSync(targetFolder)) {
+      return res.status(400).json({ error: "Folder already exists." });
     }
+    fs.mkdirSync(targetFolder, { recursive: true });
+    res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    const status = error.message?.includes("Access denied") ? 403 : 500;
+    res.status(status).json({ error: error.message });
   }
 });
 
-// Package manager helper - Query native installations of standard development CLI tools
-app.get("/api/package-manager/list", (req, res) => {
+app.get("/api/package-manager/list", (_req, res) => {
   const tools = [
     { name: "git", description: "Distributed version control system", category: "Version Control" },
     { name: "curl", description: "Command line tool for transferring data via URL", category: "Network" },
     { name: "wget", description: "Non-interactive network downloader", category: "Network" },
-    { name: "jq", description: "Command-line light JSON query processor", category: "Utility" },
-    { name: "tmux", description: "Terminal session multiplexer window manager", category: "Terminal" },
-    { name: "sqlite3", description: "Command-line dynamic shell for SQLite DBs", category: "Database" },
-    { name: "python3", description: "Python interpreter language runtime", category: "Runtime" },
-    { name: "node", description: "Node.js JavaScript server runtime engine", category: "Runtime" },
-    { name: "npm", description: "Node package package indexing manager", category: "Runtime" },
-    { name: "gcc", description: "GNU Compiler C language compiler core", category: "Development" },
-    { name: "make", description: "Build engineering and task automation helper", category: "Development" }
+    { name: "jq", description: "Command-line JSON query processor", category: "Utility" },
+    { name: "tmux", description: "Terminal session multiplexer", category: "Terminal" },
+    { name: "sqlite3", description: "SQLite command-line shell", category: "Database" },
+    { name: "python3", description: "Python interpreter", category: "Runtime" },
+    { name: "node", description: "Node.js JavaScript runtime", category: "Runtime" },
+    { name: "npm", description: "Node package manager", category: "Runtime" },
+    { name: "gcc", description: "GNU C compiler", category: "Development" },
+    { name: "make", description: "Build automation helper", category: "Development" },
   ];
 
+  const finder = process.platform === "win32" ? "where" : "which";
+
   Promise.all(
-    tools.map(tool => {
-      return new Promise<any>((resolve) => {
-        exec(`which ${tool.name}`, (err, stdout) => {
-          if (err || !stdout) {
-            resolve({ ...tool, installed: false, version: null });
-          } else {
-            const versionCmd = tool.name === "gcc" ? "gcc --version | head -n 1" : `${tool.name} --version || ${tool.name} -v`;
-            exec(versionCmd, (vErr, vStdout) => {
-              let version = "Detected";
-              if (!vErr && vStdout) {
-                const firstLine = vStdout.trim().split("\n")[0];
-                const match = firstLine.match(/(\d+\.\d+(\.\d+)?)/);
-                version = match ? match[0] : firstLine.substring(0, 24);
-              }
-              resolve({ ...tool, installed: true, version });
+    tools.map(
+      (tool) =>
+        new Promise<any>((resolve) => {
+          execFile(finder, [tool.name], { timeout: 5000 }, (err, stdout) => {
+            if (err || !stdout) {
+              resolve({ ...tool, installed: false, version: null });
+              return;
+            }
+
+            execFile(tool.name, ["--version"], { timeout: 5000 }, (versionErr, versionStdout) => {
+              resolve({
+                ...tool,
+                installed: true,
+                version: versionErr ? "Detected" : firstVersionLine(versionStdout),
+              });
             });
-          }
-        });
-      });
-    })
-  ).then(results => {
-    res.json({ tools: results });
-  }).catch(error => {
-    res.status(500).json({ error: error.message });
-  });
+          });
+        }),
+    ),
+  )
+    .then((tools) => res.json({ tools }))
+    .catch((error) => res.status(500).json({ error: error.message }));
 });
 
-// Intelligent Task and Shell Command optimizer using Gemini
 app.post("/api/gemini/optimize-command", async (req, res) => {
-  const { prompt, currentContext } = req.body;
-  if (!prompt) {
-    return res.status(400).json({ error: "User goal/intent is required." });
+  const { prompt, currentContext } = req.body as { prompt?: string; currentContext?: string };
+  if (!prompt?.trim()) {
+    return res.status(400).json({ error: "User goal or intent is required." });
   }
 
   try {
     const ai = getGeminiClient();
-    const systemInstruction = `You are WebTermux's Intelligent AI Shell Optimizer. Your task is to translate natural language intentions into highly optimized, safe, modern, and rapid Linux/Bash terminal commands (e.g. suggesting elegant xargs, modern find, sed/awk, custom short loops, or parallel execution hacks).
+    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    const systemInstruction = `You are TerminAI's shell command optimizer. Translate a user's goal into one concise, modern, local terminal command.
 
-You MUST return a structure-validated JSON object satisfying this precise schema:
+Return only a JSON object with this shape:
 {
-  "optimizedCommand": "The actual single-line executable bash command",
-  "explanation": "A clean, concise 1-2 paragraph markdown explanation detailing why this is fast and which flags do what.",
-  "alternative": "A safer, localized, dry-run alternative command or tips."
+  "optimizedCommand": "single-line shell command",
+  "explanation": "brief explanation of why this command is useful and what its flags do",
+  "alternative": "safer dry-run or lower-risk alternative"
 }
-No other text envelopes. Just output the clean JSON object. Ensure the commands represent actual Unix/Ubuntu commands found in standard workspaces.`;
 
-    const contents = `Translate this user request to an optimized command: "${prompt}".
-Active directory or context string: "${currentContext || 'Workspace Root'}"`;
+Prefer safe, inspectable commands. Avoid destructive commands unless the user's request explicitly requires them, and provide a safer alternative when risk exists.`;
 
+    const contents = `User request: ${prompt}\nCurrent workspace context: ${currentContext || WORKSPACE_ROOT}`;
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model,
       contents,
       config: {
         systemInstruction,
@@ -356,22 +343,20 @@ Active directory or context string: "${currentContext || 'Workspace Root'}"`;
           type: Type.OBJECT,
           required: ["optimizedCommand", "explanation", "alternative"],
           properties: {
-            optimizedCommand: { type: Type.STRING, description: "Highly optimized execution statement ready to run" },
-            explanation: { type: Type.STRING, description: "Detailed visual markdown explanation of the command" },
-            alternative: { type: Type.STRING, description: "Dry-run/safest approach alternative" }
-          }
-        }
-      }
+            optimizedCommand: { type: Type.STRING, description: "Single-line shell command" },
+            explanation: { type: Type.STRING, description: "Concise explanation" },
+            alternative: { type: Type.STRING, description: "Safer dry-run or alternative" },
+          },
+        },
+      },
     });
 
     const jsonText = response.text;
-    if (!jsonText) {
-      throw new Error("Failed to secure content response from Gemini model.");
-    }
-    const data = JSON.parse(jsonText.trim());
-    res.json(data);
+    if (!jsonText) throw new Error("AI optimizer returned an empty response.");
+    res.json(JSON.parse(jsonText.trim()));
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    const status = error.message?.includes("GEMINI_API_KEY") ? 503 : 500;
+    res.status(status).json({ error: error.message });
   }
 });
 
@@ -381,24 +366,26 @@ Active directory or context string: "${currentContext || 'Workspace Root'}"`;
 
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
-    // Integrate Vite as a dev middleware
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    // Serve static compiled assets in production
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.get("*", (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`WebTermux Graphical Shell Backend actively listening on port ${PORT}`);
+    console.log(`TerminAI local workspace listening on http://localhost:${PORT}`);
+    console.log(`Workspace root: ${WORKSPACE_ROOT}`);
   });
 }
 
-startServer();
+startServer().catch((error) => {
+  console.error("Failed to start TerminAI:", error);
+  process.exit(1);
+});
