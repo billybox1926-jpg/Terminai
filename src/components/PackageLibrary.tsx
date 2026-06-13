@@ -6,25 +6,53 @@ interface PackageLibraryProps {
   onRunInstallCommand: (cmd: string) => void;
 }
 
-const aptPackageMap: Record<string, string> = {
-  git: "git",
-  curl: "curl",
-  wget: "wget",
-  jq: "jq",
-  tmux: "tmux",
-  sqlite3: "sqlite3",
-  python3: "python3",
-  node: "nodejs",
-  npm: "npm",
-  gcc: "gcc build-essential",
-  make: "make"
+const aptPackageMap: Record<string, string[]> = {
+  git: ["git"],
+  curl: ["curl"],
+  wget: ["wget"],
+  jq: ["jq"],
+  tmux: ["tmux"],
+  sqlite3: ["sqlite3"],
+  python3: ["python3"],
+  node: ["nodejs"],
+  npm: ["npm"],
+  gcc: ["gcc", "build-essential"],
+  make: ["make"],
 };
+
+const packageNamePattern = /^[a-z0-9][a-z0-9.+-]*$/;
+
+function sanitizePackageInput(input: string): string[] {
+  const packages = input
+    .toLowerCase()
+    .split(/[\s,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  if (packages.length === 0) return [];
+  const invalid = packages.find((name) => !packageNamePattern.test(name));
+  if (invalid) {
+    throw new Error(`Invalid package name: ${invalid}`);
+  }
+  return Array.from(new Set(packages));
+}
+
+function buildAptInstallCommand(packages: string[], label: string): string {
+  const packageList = Array.from(new Set(packages)).join(" ");
+  return [
+    `echo "${label}"`,
+    "if ! command -v apt-get >/dev/null 2>&1; then echo \"apt-get is not available in this environment.\"; exit 127; fi",
+    "export DEBIAN_FRONTEND=noninteractive",
+    `(apt-get update && apt-get install -y ${packageList}) || (command -v sudo >/dev/null 2>&1 && sudo -n apt-get update && sudo -n apt-get install -y ${packageList})`,
+  ].join(" && ");
+}
 
 export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallCommand }) => {
   const [tools, setTools] = useState<CLITool[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [customPackage, setCustomPackage] = useState<string>("");
+  const [installError, setInstallError] = useState<string>("");
 
   const fetchPackages = async () => {
     setLoading(true);
@@ -54,25 +82,29 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
   const absentTools = tools.filter(tool => !tool.installed);
 
   const handleInstallAllAbsent = () => {
-    const listToInstall = absentTools.map(t => aptPackageMap[t.name] || t.name).join(" ");
-    if (!listToInstall) return;
-    const cmd = `echo "Installing all missing packages..." && apt-get update && apt-get install -y ${listToInstall} || sudo apt-get update && sudo apt-get install -y ${listToInstall}`;
-    onRunInstallCommand(cmd);
+    const packages = absentTools.flatMap((tool) => aptPackageMap[tool.name] || [tool.name]);
+    if (packages.length === 0) return;
+    setInstallError("");
+    onRunInstallCommand(buildAptInstallCommand(packages, "Installing all missing TerminAI packages..."));
   };
 
   const handleInstallSingle = (toolName: string) => {
-    const aptName = aptPackageMap[toolName] || toolName;
-    const cmd = `echo "Installing ${toolName}..." && apt-get update && apt-get install -y ${aptName} || sudo apt-get update && sudo apt-get install -y ${aptName}`;
-    onRunInstallCommand(cmd);
+    const packages = aptPackageMap[toolName] || [toolName];
+    setInstallError("");
+    onRunInstallCommand(buildAptInstallCommand(packages, `Installing ${toolName} for TerminAI...`));
   };
 
   const handleCustomInstall = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customPackage.trim()) return;
-    const cleanPkg = customPackage.trim().toLowerCase();
-    const cmd = `echo "Running custom installation command..." && apt-get update && apt-get install -y ${cleanPkg} || sudo apt-get update && sudo apt-get install -y ${cleanPkg}`;
-    onRunInstallCommand(cmd);
-    setCustomPackage("");
+    try {
+      const packages = sanitizePackageInput(customPackage);
+      if (packages.length === 0) return;
+      setInstallError("");
+      onRunInstallCommand(buildAptInstallCommand(packages, "Installing custom TerminAI packages..."));
+      setCustomPackage("");
+    } catch (error: any) {
+      setInstallError(error.message || "Invalid package name.");
+    }
   };
 
   return (
@@ -93,16 +125,15 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
       </div>
 
       <p className="text-[11px] text-white/40 mb-3 leading-relaxed">
-        Terminai operates directly on a fully functional server container. Below are pre-configured developer CLI packages and interpreters:
+        TerminAI operates directly on a local workspace host. Below are developer CLI packages and interpreters detected in the active environment:
       </p>
 
-      {/* Auto preinstall missing helper banner */}
       {!loading && absentTools.length > 0 && (
         <div className="bg-emerald-950/20 border border-emerald-900/40 rounded-lg p-3 mb-3 flex flex-col gap-2 animate-fadeIn">
           <div className="flex items-center justify-between gap-1.5 row-auto">
             <span className="text-[10px] font-sans text-emerald-300 font-semibold flex items-center gap-1">
               <Download className="w-3.5 h-3.5 text-emerald-400" />
-              {absentTools.length} system utilities can be pre-installed!
+              {absentTools.length} system utilities can be installed.
             </span>
             <button
               onClick={handleInstallAllAbsent}
@@ -112,12 +143,11 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
             </button>
           </div>
           <span className="text-[9px] text-white/40 leading-snug">
-            Run automated installation in the main terminal interface. Makes full CLI environments immediately active.
+            Runs an apt-get install command through the main terminal. This only works on hosts that provide apt-get and permissions to install packages.
           </span>
         </div>
       )}
 
-      {/* Search and filter bar */}
       <div className="relative mb-3.5">
         <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 text-white/30">
           <Search className="w-3.5 h-3.5" />
@@ -131,7 +161,6 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
         />
       </div>
 
-      {/* Package listings */}
       {loading ? (
         <div className="flex items-center justify-center py-8 text-xs text-white/40">
           <div className="animate-spin rounded-full h-3.5 w-3.5 border-t border-emerald-400 border-r border-emerald-400 mr-2" />
@@ -203,13 +232,15 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
         </div>
       )}
 
-      {/* Custom APT Package form */}
       <form onSubmit={handleCustomInstall} className="flex gap-1.5 mt-3 pt-3 border-t border-white/5">
         <input 
           type="text" 
-          placeholder="Install apt packages (e.g., htop, neofetch)..." 
+          placeholder="Install apt packages: htop neofetch ripgrep" 
           value={customPackage}
-          onChange={(e) => setCustomPackage(e.target.value)}
+          onChange={(e) => {
+            setCustomPackage(e.target.value);
+            if (installError) setInstallError("");
+          }}
           className="flex-1 bg-[#0E0E10] border border-white/5 rounded-md px-2.5 py-1 text-[11px] text-white placeholder-white/20 focus:outline-none focus:border-emerald-500/50 font-mono"
         />
         <button 
@@ -219,6 +250,11 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
           <Plus className="w-3.5 h-3.5" />
         </button>
       </form>
+      {installError && (
+        <div className="mt-2 text-[10px] text-amber-300 bg-amber-950/30 border border-amber-900/40 rounded-md px-2.5 py-1.5">
+          {installError}
+        </div>
+      )}
     </div>
   );
 };
