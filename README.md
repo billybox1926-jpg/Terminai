@@ -30,19 +30,26 @@ TerminAI currently runs as a local Node/Vite app with an Express backend. It pro
 * quick script launchers,
 * a package/tool availability panel,
 * install helpers for missing packages on apt-based hosts,
+* device/build status and artifact telemetry controls,
 * optional AI command optimization through OpenRouter or Gemini.
-
 ## Locked-and-loaded package direction
+
 The current web workspace can detect and install missing tools. The target native app should go further:
 
-* ship a curated bootstrap package set defined in `/runtime/package-baseline.json` (the source of truth),
-* expose package status in the dashboard,
-* install/update packages from inside the same UI,
+* ship a curated bootstrap package set defined in `runtime/package-baseline.json` (the source of truth),
+* expose package status and a runtime readiness summary (total/installed/missing/ready) in the dashboard,
+* install/update packages from inside the same UI via sanitized manifest-driven commands,
 * avoid separate companion apps for API features,
 * keep device/API permissions behind one TerminAI identity.
 
-The package baseline is dynamically retrieved from `/runtime/package-baseline.json` and currently includes:
+The package baseline is defined in `runtime/package-baseline.json` and currently includes:
 `git curl wget jq tmux sqlite3 python3 nodejs npm gcc build-essential make ripgrep htop nano openssh unzip zip tar`
+
+Each entry includes `id`, `displayName`, `aptPackages`, `queryCommand`, `category`, `description`, and `required`.
+
+The `/api/package-manager/list` route reads the manifest, queries each tool, and returns a `readiness` summary.
+The `/api/package-manager/baseline` route exposes the raw manifest.
+The `/api/package-manager/install` route builds sanitized install commands from the manifest.
 
 ## API direction
 TerminAI should absorb the useful parts of Termux:API as an internal module, not as a separate app. The dashboard should eventually expose device/API capabilities through a unified panel, including battery/device info, clipboard helpers, notifications, sensors where available, storage/file pickers, and Android intent helpers.
@@ -116,15 +123,17 @@ If both provider keys are present, TerminAI uses OpenRouter first.
 ## Project layout
 ```text
 .
-├── docs/                # Architecture notes and migration plans
-├── src/                 # React UI
-│   ├── components/      # Terminal, file browser, monitor, editor, scripts
-│   ├── App.tsx          # Main workspace shell
-│   └── types.ts         # Shared frontend types
-├── server.ts            # Express API + Vite integration
-├── index.html           # App shell
-├── package.json         # Node scripts and dependencies
-└── .env.example         # Local configuration template
+├── docs/                      # Architecture notes and migration plans
+├── runtime/                   # Runtime manifests
+│   └── package-baseline.json  # Source of truth for the locked-and-loaded package layer
+├── src/                       # React UI
+│   ├── components/            # Terminal, file browser, monitor, editor, scripts
+│   ├── App.tsx                # Main workspace shell
+│   └── types.ts               # Shared frontend types
+├── server.ts                  # Express API + Vite integration
+├── index.html                 # App shell
+├── package.json               # Node scripts and dependencies
+└── .env.example               # Local configuration template
 ```
 
 ## Direction

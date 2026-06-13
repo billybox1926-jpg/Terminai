@@ -74,6 +74,18 @@ export interface OptimizedCommandResult {
   alternative: string;
 }
 
+export interface PackageReadiness {
+  total: number;
+  installed: number;
+  missing: number;
+  ready: boolean;
+}
+
+export interface PackageListResponse {
+  tools: CLITool[];
+  readiness: PackageReadiness;
+}
+
 export interface DeviceInfo {
   batteryLevel: number;
   batteryTemperature: string;

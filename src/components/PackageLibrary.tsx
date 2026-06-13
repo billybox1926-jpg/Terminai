@@ -12,6 +12,8 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [customPackage, setCustomPackage] = useState<string>("");
 
+  const [readiness, setReadiness] = useState<{ total: number; installed: number; missing: number; ready: boolean } | null>(null);
+
   const fetchPackages = async () => {
     setLoading(true);
     try {
@@ -19,6 +21,9 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
       const data = await response.json();
       if (data && data.tools) {
         setTools(data.tools);
+        if (data.readiness) {
+          setReadiness(data.readiness);
+        }
       }
     } catch (err) {
       console.error("Error loading tools collection", err);
@@ -96,23 +101,23 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
       </p>
 
       {/* Runtime Readiness Summary */}
-      {!loading && (
+      {!loading && readiness && (
         <div id="runtime-readiness-summary" className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 p-3 bg-[#0d0d0f] border border-white/5 rounded-lg text-xs leading-none">
           <div className="flex flex-col gap-1">
             <span className="text-[9px] text-white/30 uppercase font-bold tracking-wider font-sans">Total Baseline</span>
-            <span className="text-xs font-extrabold text-white font-mono">{tools.length} packages</span>
+            <span className="text-xs font-extrabold text-white font-mono">{readiness.total} packages</span>
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-[9px] text-emerald-500/60 uppercase font-bold tracking-wider font-sans">Installed</span>
-            <span className="text-xs font-extrabold text-emerald-400 font-mono">{tools.filter(t => t.installed).length} OK</span>
+            <span className="text-xs font-extrabold text-emerald-400 font-mono">{readiness.installed} OK</span>
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-[9px] text-amber-500/60 uppercase font-bold tracking-wider font-sans">Missing</span>
-            <span className="text-xs font-extrabold text-amber-400 font-mono">{tools.filter(t => !t.installed).length} absent</span>
+            <span className="text-xs font-extrabold text-amber-400 font-mono">{readiness.missing} absent</span>
           </div>
           <div className="flex flex-col justify-center">
             <span className="text-[9px] text-white/30 uppercase font-bold tracking-wider font-sans mb-1">State</span>
-            {tools.filter(t => !t.installed).length === 0 ? (
+            {readiness.ready ? (
               <span className="inline-flex items-center gap-1 text-[8.5px] text-emerald-400 font-bold bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-900/40 max-w-fit shadow-[0_0_8px_rgba(16,185,129,0.2)] font-mono">
                 ● READY
               </span>

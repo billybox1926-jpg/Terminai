@@ -21,6 +21,8 @@ The manifest defines a series of package descriptors with the following properti
 - `required` (boolean): Setting to demand first-class workspace readiness.
 
 ### Benefits of the Unified Manifest Design
-1. **No Frontend Hardcoding:** The user-facing dashboard queries `/api/package-manager/list` which reads directly from `/runtime/package-baseline.json`. Client apps automatically adapt if new packages are registered.
+1. **No Frontend Hardcoding:** The user-facing dashboard queries `/api/package-manager/list` which reads directly from `runtime/package-baseline.json`. Client apps automatically adapt if new packages are registered.
 2. **Deterministic Commands:** Auto-install commands are assembled directly from `aptPackages` properties instead of arbitrary mapping files, guaranteeing that custom packages can be added inside the manifest and fully managed.
-3. **Execution Safety/Sanitization:** Custom packages are strictly sanitized using regex validators (`^[a-z0-9.+-]+$`), ensuring container protection.
+3. **Execution Safety/Sanitization:** Package names are strictly sanitized using regex validators (`^[a-z0-9][a-z0.+-]*$`), ensuring container protection.
+4. **Readiness Summary:** The `/api/package-manager/list` route returns a `readiness` object (`total`, `installed`, `missing`, `ready`) computed from the manifest, driving the Runtime Readiness panel in the dashboard.
+5. **Dedicated Endpoints:** `/api/package-manager/baseline` exposes the raw manifest; `/api/package-manager/install` builds sanitized install commands from manifest package IDs.

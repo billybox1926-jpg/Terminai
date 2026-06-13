@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import os from "os";
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
@@ -415,10 +415,90 @@ app.get("/api/package-manager/list", (req, res) => {
       });
     })
   ).then(results => {
-    res.json({ tools: results });
+    const total = results.length;
+    const installed = results.filter((t: any) => t.installed).length;
+    const missing = total - installed;
+    res.json({
+      tools: results,
+      readiness: {
+        total,
+        installed,
+        missing,
+        ready: missing === 0,
+      },
+    });
   }).catch(error => {
     res.status(500).json({ error: error.message });
   });
+});
+
+function sanitizePackageName(name: string): string {
+  const cleaned = name.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0.+-]*$/.test(cleaned)) {
+    throw new Error(`Invalid package name: ${name}`);
+  }
+  return cleaned;
+}
+
+app.get("/api/package-manager/baseline", (_req, res) => {
+  const baseDir = process.env.TERMINAI_WORKSPACE_ROOT || process.cwd();
+  const manifestPath = path.join(baseDir, "runtime", "package-baseline.json");
+  try {
+    if (!fs.existsSync(manifestPath)) {
+      return res.status(404).json({ error: "Package baseline manifest not found." });
+    }
+    const raw = fs.readFileSync(manifestPath, "utf-8");
+    res.json(JSON.parse(raw));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/package-manager/install", (req, res) => {
+  const { packageIds } = req.body as { packageIds?: string[] };
+  if (!packageIds || !Array.isArray(packageIds) || packageIds.length === 0) {
+    return res.status(400).json({ error: "packageIds array is required." });
+  }
+
+  const baseDir = process.env.TERMINAI_WORKSPACE_ROOT || process.cwd();
+  const manifestPath = path.join(baseDir, "runtime", "package-baseline.json");
+
+  let packages: any[] = [];
+  try {
+    if (fs.existsSync(manifestPath)) {
+      const raw = fs.readFileSync(manifestPath, "utf-8");
+      const manifest = JSON.parse(raw);
+      packages = manifest.packages || [];
+    }
+  } catch (error: any) {
+    return res.status(500).json({ error: `Failed to read baseline manifest: ${error.message}` });
+  }
+
+  const packageMap = new Map(packages.map((p: any) => [p.id, p]));
+  const aptPackages: string[] = [];
+
+  for (const id of packageIds) {
+    const pkg = packageMap.get(id);
+    if (!pkg) {
+      return res.status(404).json({ error: `Unknown package: ${id}` });
+    }
+    if (pkg.aptPackages) {
+      aptPackages.push(pkg.aptPackages);
+    }
+  }
+
+  if (aptPackages.length === 0) {
+    return res.status(400).json({ error: "No valid apt packages found for the given IDs." });
+  }
+
+  try {
+    const allApt = aptPackages.join(" ");
+    const sanitized = allApt.split(/\s+/).map(sanitizePackageName).join(" ");
+    const command = `echo "Installing ${sanitized}..." && apt-get update && apt-get install -y ${sanitized} || sudo apt-get update && sudo apt-get install -y ${sanitized}`;
+    res.json({ command, message: `Install command ready for: ${sanitized}` });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // Device & Build Status API layer (TerminAI runtime modules)
