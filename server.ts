@@ -509,11 +509,18 @@ app.post("/api/gemini/optimize-command", async (req, res) => {
 
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+    try {
+      const vite = await Promise.race([
+        createViteServer({
+          server: { middlewareMode: true },
+          appType: "spa",
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Vite init timeout")), 10000)),
+      ]);
+      app.use((vite as any).middlewares);
+    } catch (viteError: any) {
+      console.warn(`Vite middleware unavailable (${viteError.message}), serving API only. Build with 'npm run build' for static assets.`);
+    }
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
