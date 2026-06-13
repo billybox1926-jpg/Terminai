@@ -39,6 +39,8 @@ Acceptance criteria:
 
 Labels: `ci`, `release`, `priority:medium`
 
+GitHub issue: [#3](https://github.com/billybox1926-jpg/Terminai/issues/3)
+
 Create a release workflow for tagged versions after the basic CI is green.
 
 Acceptance criteria:
@@ -54,6 +56,8 @@ Acceptance criteria:
 
 Labels: `android`, `release`, `security`, `priority:medium`
 
+GitHub issue: [#4](https://github.com/billybox1926-jpg/Terminai/issues/4)
+
 Unsigned release APKs are useful for CI, but real distribution needs signing.
 
 Acceptance criteria:
@@ -67,6 +71,8 @@ Acceptance criteria:
 
 Labels: `android`, `priority:medium`
 
+GitHub issue: [#5](https://github.com/billybox1926-jpg/Terminai/issues/5)
+
 Add confidence that the APK installs cleanly beyond just compiling.
 
 Acceptance criteria:
@@ -79,6 +85,8 @@ Acceptance criteria:
 ## 6. Runtime: enforce manifest and bundle integrity checks
 
 Labels: `runtime`, `ci`, `priority:high`
+
+GitHub issue: [#6](https://github.com/billybox1926-jpg/Terminai/issues/6)
 
 Runtime manifests are source-of-truth files and should fail CI when malformed.
 
@@ -105,6 +113,8 @@ Acceptance criteria:
 ## 8. Security: add command/file API safety regression tests
 
 Labels: `security`, `web`, `priority:high`
+
+GitHub issue: [#8](https://github.com/billybox1926-jpg/Terminai/issues/8)
 
 TerminAI executes shell commands and edits files, so guardrails need tests.
 
@@ -157,6 +167,8 @@ Acceptance criteria:
 ## 12. Tests: add real automated tests beyond typecheck
 
 Labels: `web`, `android`, `ci`, `priority:medium`
+
+GitHub issue: [#12](https://github.com/billybox1926-jpg/Terminai/issues/12)
 
 `npm run lint` currently aliases typecheck. Add actual behavior-level checks before the app grows.
 

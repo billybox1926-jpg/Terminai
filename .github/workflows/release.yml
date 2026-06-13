@@ -1,0 +1,192 @@
+name: TerminAI Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: terminai-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build versioned release artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Derive release version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+            IS_TAG_RELEASE="true"
+          else
+            VERSION="manual-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
+            IS_TAG_RELEASE="false"
+          fi
+          echo "TERMINAI_RELEASE_VERSION=${VERSION}" >> "${GITHUB_ENV}"
+          echo "TERMINAI_IS_TAG_RELEASE=${IS_TAG_RELEASE}" >> "${GITHUB_ENV}"
+          echo "Release version: ${VERSION}"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Type-check web/server code
+        run: npm run typecheck
+
+      - name: Runtime manifest status
+        run: npm run runtime:status
+
+      - name: Build web client and production server
+        run: npm run build
+
+      - name: Build runtime bundle lock
+        run: npm run runtime:bundle
+
+      - name: Smoke-test production server
+        shell: bash
+        run: |
+          set -euxo pipefail
+          PORT=3099 npm run start > server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill ${SERVER_PID} 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS "http://127.0.0.1:3099/" >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS "http://127.0.0.1:3099/" >/dev/null
+          curl -fsS "http://127.0.0.1:3099/api/runtime/status" >/dev/null
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=${SDK_ROOT}" >> "${GITHUB_ENV}"
+          echo "ANDROID_SDK_ROOT=${SDK_ROOT}" >> "${GITHUB_ENV}"
+          echo "${SDK_ROOT}/cmdline-tools/latest/bin" >> "${GITHUB_PATH}"
+          echo "${SDK_ROOT}/platform-tools" >> "${GITHUB_PATH}"
+          "${SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --version
+          set +o pipefail
+          yes | "${SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          set -o pipefail
+          "${SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/gradle-wrapper.properties', 'android/**/*.gradle', 'android/gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Make Gradle wrapper executable
+        working-directory: android
+        run: chmod +x gradlew
+
+      - name: Run Android unit tests
+        working-directory: android
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Run Android lint
+        working-directory: android
+        run: ./gradlew lintDebug --no-daemon --stacktrace
+
+      - name: Build Android debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Build Android unsigned release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Package versioned artifacts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          VERSION="${TERMINAI_RELEASE_VERSION}"
+          mkdir -p release-artifacts
+          tar -czf "release-artifacts/terminai-web-dist-${VERSION}.tar.gz" -C dist .
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+            "release-artifacts/terminai-android-debug-${VERSION}.apk"
+          cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
+            "release-artifacts/terminai-android-release-unsigned-${VERSION}.apk"
+          cp server.log "release-artifacts/terminai-web-server-${VERSION}.log"
+          (
+            cd release-artifacts
+            sha256sum * > "terminai-${VERSION}-sha256sums.txt"
+          )
+          cat > release-notes.md <<EOF
+          # TerminAI ${VERSION}
+
+          Official GitHub Actions build artifacts for TerminAI.
+
+          ## Artifacts
+
+          - terminai-web-dist-${VERSION}.tar.gz — production Vite client, bundled Express server, and runtime bundle manifest.
+          - terminai-android-debug-${VERSION}.apk — debug APK for install/testing.
+          - terminai-android-release-unsigned-${VERSION}.apk — unsigned release APK.
+          - terminai-${VERSION}-sha256sums.txt — SHA-256 checksums.
+
+          ## Signing status
+
+          The unsigned release APK is not final distribution signing. Signed Android release builds are tracked separately and should not be assumed complete from this artifact.
+          EOF
+
+      - name: Upload release workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminai-release-${{ env.TERMINAI_RELEASE_VERSION }}
+          path: release-artifacts/
+          if-no-files-found: error
+
+      - name: Upload Android reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminai-release-android-reports-${{ env.TERMINAI_RELEASE_VERSION }}
+          path: |
+            android/app/build/reports/
+            android/app/build/test-results/
+          if-no-files-found: ignore
+
+      - name: Create GitHub Release for tag
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gh release create "${GITHUB_REF_NAME}" release-artifacts/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "TerminAI ${TERMINAI_RELEASE_VERSION}" \
+            --notes-file release-notes.md

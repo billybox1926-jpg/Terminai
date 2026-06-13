@@ -1,6 +1,9 @@
 # TerminAI
 A terminal that thinks with you.
 
+[![TerminAI Web CI](https://github.com/billybox1926-jpg/Terminai/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/billybox1926-jpg/Terminai/actions/workflows/ci.yml)
+[![TerminAI Android Native](https://github.com/billybox1926-jpg/Terminai/actions/workflows/android-native.yml/badge.svg?branch=main)](https://github.com/billybox1926-jpg/Terminai/actions/workflows/android-native.yml)
+
 TerminAI is a single integrated terminal workspace: graphical shell, package layer, API bridge, file tools, telemetry, scripts, and AI command optimization in one app surface.
 
 The goal is not to recreate the split Termux ecosystem where the main app, API app, Boot app, Widget app, Float app, Styling app, and Tasker bridge all live separately. TerminAI should feel locked and loaded from first launch.
@@ -83,6 +86,31 @@ npm run dev
 
 Open:
 `http://localhost:3000`
+
+## Build and release artifacts
+
+GitHub Actions is the official build gate for TerminAI. Local builds are useful for development, but release artifacts should come from Actions runs on GitHub.
+
+### CI artifacts
+
+Open the [Actions tab](https://github.com/billybox1926-jpg/Terminai/actions), select a successful run, then download artifacts from the run summary.
+
+- `terminai-web-dist` comes from the `TerminAI Web CI` workflow and contains the production web/client and bundled server `dist/` output.
+- `terminai-android-debug-apk` comes from the `TerminAI Android Native` workflow and contains the debug APK for install/testing.
+- `terminai-android-release-unsigned-apk` comes from the `TerminAI Android Native` workflow and contains the unsigned release APK.
+
+The unsigned release APK is not final distribution signing. It is a CI-produced release-shape artifact only; signed Android distribution is a separate release-hardening step.
+
+### Release artifacts
+
+The `TerminAI Release` workflow runs manually or from tags matching `v*`. It runs the web/server checks, runtime bundle generation, Android tests/lint, and both APK builds, then packages versioned artifacts such as:
+
+- `terminai-web-dist-<version>.tar.gz`
+- `terminai-android-debug-<version>.apk`
+- `terminai-android-release-unsigned-<version>.apk`
+- `terminai-<version>-sha256sums.txt`
+
+For tag-triggered runs, the workflow also creates a GitHub Release and attaches those versioned artifacts. See `docs/release-process.md`.
 
 ## AI provider setup
 TerminAI works without an AI key, but the AI Optimizer needs one provider configured.
