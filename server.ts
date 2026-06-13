@@ -16,7 +16,7 @@ dotenv.config();
 
 // Initialize express app
 const app = express();
-const PORT = 3000;
+const PORT = Number.parseInt(process.env.PORT ?? "3000", 10);
 
 // Body parser
 app.use(express.json());

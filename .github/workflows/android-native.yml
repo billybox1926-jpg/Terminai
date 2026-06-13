@@ -7,12 +7,14 @@ on:
       - main
     paths:
       - "android/**"
+      - "runtime/**"
       - ".github/workflows/android-native.yml"
   pull_request:
     branches:
       - main
     paths:
       - "android/**"
+      - "runtime/**"
       - ".github/workflows/android-native.yml"
 
 permissions:
@@ -23,10 +25,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build Android native host
+  android:
+    name: Lint, test, and build Android APKs
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Check out repository
@@ -62,19 +64,50 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/gradle-wrapper.properties', 'android/**/build.gradle', 'android/**/settings.gradle') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/gradle-wrapper.properties', 'android/**/*.gradle', 'android/gradle.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Build Android debug APK
+      - name: Make Gradle wrapper executable
         working-directory: android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+        run: chmod +x gradlew
 
-      - name: Upload APK artifact
+      - name: Run unit tests
+        working-directory: android
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Run Android lint
+        working-directory: android
+        run: ./gradlew lintDebug --no-daemon --stacktrace
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Build unsigned release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: terminai-android-debug
+          name: terminai-android-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Upload unsigned release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminai-android-release-unsigned-apk
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+
+      - name: Upload Android reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminai-android-reports
+          path: |
+            android/app/build/reports/
+            android/app/build/test-results/
+          if-no-files-found: ignore

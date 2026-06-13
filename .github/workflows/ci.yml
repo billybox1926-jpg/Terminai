@@ -1,4 +1,4 @@
-name: TerminAI CI
+name: TerminAI Web CI
 
 on:
   workflow_dispatch:
@@ -9,27 +9,44 @@ on:
       - ".github/workflows/ci.yml"
       - "package.json"
       - "package-lock.json"
+      - "postcss.config.js"
+      - "tailwind.config.js"
       - "tsconfig.json"
       - "vite.config.ts"
       - "index.html"
       - "server.ts"
       - "src/**"
+      - "runtime/**"
+      - "scripts/**"
   pull_request:
     branches:
       - main
+    paths:
+      - ".github/workflows/ci.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "postcss.config.js"
+      - "tailwind.config.js"
+      - "tsconfig.json"
+      - "vite.config.ts"
+      - "index.html"
+      - "server.ts"
+      - "src/**"
+      - "runtime/**"
+      - "scripts/**"
 
 permissions:
   contents: read
 
 concurrency:
-  group: terminai-ci-${{ github.ref }}
+  group: terminai-web-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Type-check and build
+  web:
+    name: Type-check, runtime checks, and web/server build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
@@ -39,12 +56,50 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Type-check
         run: npm run typecheck
 
-      - name: Build
+      - name: Runtime manifest status
+        run: npm run runtime:status
+
+      - name: Build web client and production server
         run: npm run build
+
+      - name: Build runtime bundle lock
+        run: npm run runtime:bundle
+
+      - name: Smoke-test production server
+        shell: bash
+        run: |
+          set -euxo pipefail
+          PORT=3099 npm run start > server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill ${SERVER_PID} 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS "http://127.0.0.1:3099/" >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS "http://127.0.0.1:3099/" >/dev/null
+          curl -fsS "http://127.0.0.1:3099/api/runtime/status" >/dev/null
+
+      - name: Upload production server logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminai-web-server-logs
+          path: server.log
+          if-no-files-found: ignore
+
+      - name: Upload web/server build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminai-web-dist
+          path: dist/
+          if-no-files-found: error
