@@ -6,29 +6,6 @@ interface PackageLibraryProps {
   onRunInstallCommand: (cmd: string) => void;
 }
 
-const aptPackageMap: Record<string, string> = {
-  git: "git",
-  curl: "curl",
-  wget: "wget",
-  jq: "jq",
-  tmux: "tmux",
-  sqlite3: "sqlite3",
-  python3: "python3",
-  node: "nodejs",
-  npm: "npm",
-  gcc: "gcc",
-  "build-essential": "build-essential",
-  make: "make",
-  ripgrep: "ripgrep",
-  htop: "htop",
-  nano: "nano",
-  openssh: "openssh-client openssh-server",
-  "java-common": "java-common default-jre",
-  unzip: "unzip",
-  zip: "zip",
-  tar: "tar"
-};
-
 export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallCommand }) => {
   const [tools, setTools] = useState<CLITool[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -63,14 +40,15 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
   const absentTools = tools.filter(tool => !tool.installed);
 
   const handleInstallAllAbsent = () => {
-    const listToInstall = absentTools.map(t => aptPackageMap[t.name] || t.name).join(" ");
+    const listToInstall = absentTools.map(t => t.aptPackages || t.name).join(" ");
     if (!listToInstall) return;
     const cmd = `echo "Installing all missing packages..." && apt-get update && apt-get install -y ${listToInstall} || sudo apt-get update && sudo apt-get install -y ${listToInstall}`;
     onRunInstallCommand(cmd);
   };
 
   const handleInstallSingle = (toolName: string) => {
-    const aptName = aptPackageMap[toolName] || toolName;
+    const matched = tools.find(t => t.name === toolName);
+    const aptName = matched?.aptPackages || toolName;
     const cmd = `echo "Installing ${toolName}..." && apt-get update && apt-get install -y ${aptName} || sudo apt-get update && sudo apt-get install -y ${aptName}`;
     onRunInstallCommand(cmd);
   };
@@ -79,7 +57,19 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
     e.preventDefault();
     if (!customPackage.trim()) return;
     const cleanPkg = customPackage.trim().toLowerCase();
-    const cmd = `echo "Running custom installation command..." && apt-get update && apt-get install -y ${cleanPkg} || sudo apt-get update && sudo apt-get install -y ${cleanPkg}`;
+
+    // Command sanitization validation: Package names may only contain lowercase letters, numbers, dots, plus, and hyphen.
+    const sanitizedAndValidated = cleanPkg
+      .split(/\s+/)
+      .filter(pkg => /^[a-z0-9.+-]+$/.test(pkg))
+      .join(" ");
+
+    if (!sanitizedAndValidated) {
+      alert("Sanitization Alert: Package names may only contain lowercase letters, numbers, dots, plus, and hyphen.");
+      return;
+    }
+
+    const cmd = `echo "Running custom installation command..." && apt-get update && apt-get install -y ${sanitizedAndValidated} || sudo apt-get update && sudo apt-get install -y ${sanitizedAndValidated}`;
     onRunInstallCommand(cmd);
     setCustomPackage("");
   };
@@ -104,6 +94,36 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
       <p className="text-[11px] text-white/40 mb-3 leading-relaxed">
         Terminai operates directly on a fully functional server container. Below are pre-configured developer CLI packages and interpreters:
       </p>
+
+      {/* Runtime Readiness Summary */}
+      {!loading && (
+        <div id="runtime-readiness-summary" className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 p-3 bg-[#0d0d0f] border border-white/5 rounded-lg text-xs leading-none">
+          <div className="flex flex-col gap-1">
+            <span className="text-[9px] text-white/30 uppercase font-bold tracking-wider font-sans">Total Baseline</span>
+            <span className="text-xs font-extrabold text-white font-mono">{tools.length} packages</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[9px] text-emerald-500/60 uppercase font-bold tracking-wider font-sans">Installed</span>
+            <span className="text-xs font-extrabold text-emerald-400 font-mono">{tools.filter(t => t.installed).length} OK</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[9px] text-amber-500/60 uppercase font-bold tracking-wider font-sans">Missing</span>
+            <span className="text-xs font-extrabold text-amber-400 font-mono">{tools.filter(t => !t.installed).length} absent</span>
+          </div>
+          <div className="flex flex-col justify-center">
+            <span className="text-[9px] text-white/30 uppercase font-bold tracking-wider font-sans mb-1">State</span>
+            {tools.filter(t => !t.installed).length === 0 ? (
+              <span className="inline-flex items-center gap-1 text-[8.5px] text-emerald-400 font-bold bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-900/40 max-w-fit shadow-[0_0_8px_rgba(16,185,129,0.2)] font-mono">
+                ● READY
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[8.5px] text-amber-400 font-bold bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-900/40 max-w-fit animate-pulse font-mono">
+                ▲ SETUP REQ
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Auto preinstall missing helper banner */}
       {!loading && absentTools.length > 0 && (
@@ -161,7 +181,7 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-bold text-white/95 group-hover:text-emerald-400 transition font-sans">
-                      {tool.name}
+                      {tool.displayName || tool.name}
                     </span>
                     <span className="text-[9px] text-white/30 px-1 bg-[#1A1A1E] border border-white/5 rounded">
                       {tool.category}
@@ -187,12 +207,12 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
 
                 <div className="mt-2 flex items-center justify-between border-t border-white/5 pt-1.5 opacity-80 group-hover:opacity-100 transition">
                   <span className="text-[9px] text-white/30 flex items-center gap-0.5">
-                    <Info className="w-2.5 h-2.5" /> CLI query: {tool.name}
+                    <Info className="w-2.5 h-2.5" /> CLI query: {tool.queryCommand || tool.name}
                   </span>
                   
                   {tool.installed ? (
                     <button
-                      onClick={() => onRunInstallCommand(`${tool.name} --help`)}
+                      onClick={() => onRunInstallCommand(`${tool.queryCommand || tool.name} --help`)}
                       className="text-[9px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-0.5 border border-emerald-950 bg-emerald-950/20 hover:bg-emerald-950/50 rounded-md py-1 px-2.5 transition cursor-pointer"
                     >
                       <Terminal className="w-2.5 h-2.5" /> Run --help

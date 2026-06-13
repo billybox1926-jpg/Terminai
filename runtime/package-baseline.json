@@ -1,0 +1,173 @@
+[
+  {
+    "id": "git",
+    "displayName": "Git",
+    "aptPackages": "git",
+    "queryCommand": "git",
+    "category": "Version Control",
+    "description": "Distributed version control system",
+    "required": true
+  },
+  {
+    "id": "curl",
+    "displayName": "Curl",
+    "aptPackages": "curl",
+    "queryCommand": "curl",
+    "category": "Network",
+    "description": "Command line tool for transferring data via URL",
+    "required": true
+  },
+  {
+    "id": "wget",
+    "displayName": "Wget",
+    "aptPackages": "wget",
+    "queryCommand": "wget",
+    "category": "Network",
+    "description": "Non-interactive network downloader",
+    "required": true
+  },
+  {
+    "id": "jq",
+    "displayName": "JQ",
+    "aptPackages": "jq",
+    "queryCommand": "jq",
+    "category": "Utility",
+    "description": "Command-line light JSON query processor",
+    "required": true
+  },
+  {
+    "id": "tmux",
+    "displayName": "Tmux",
+    "aptPackages": "tmux",
+    "queryCommand": "tmux",
+    "category": "Terminal",
+    "description": "Terminal session multiplexer window manager",
+    "required": true
+  },
+  {
+    "id": "sqlite3",
+    "displayName": "SQLite3",
+    "aptPackages": "sqlite3",
+    "queryCommand": "sqlite3",
+    "category": "Database",
+    "description": "Command-line dynamic shell for SQLite DBs",
+    "required": true
+  },
+  {
+    "id": "python3",
+    "displayName": "Python3",
+    "aptPackages": "python3",
+    "queryCommand": "python3",
+    "category": "Runtime",
+    "description": "Python interpreter language runtime",
+    "required": true
+  },
+  {
+    "id": "nodejs",
+    "displayName": "Node.js",
+    "aptPackages": "nodejs",
+    "queryCommand": "node",
+    "category": "Runtime",
+    "description": "Node.js JavaScript server runtime engine",
+    "required": true
+  },
+  {
+    "id": "npm",
+    "displayName": "NPM",
+    "aptPackages": "npm",
+    "queryCommand": "npm",
+    "category": "Runtime",
+    "description": "Node package package indexing manager",
+    "required": true
+  },
+  {
+    "id": "gcc",
+    "displayName": "GCC",
+    "aptPackages": "gcc",
+    "queryCommand": "gcc",
+    "category": "Development",
+    "description": "GNU Compiler C language compiler core",
+    "required": true
+  },
+  {
+    "id": "build-essential",
+    "displayName": "Build Essential",
+    "aptPackages": "build-essential",
+    "queryCommand": "make",
+    "category": "Development",
+    "description": "Meta-package for compiling software (make, gcc, libc)",
+    "required": true
+  },
+  {
+    "id": "make",
+    "displayName": "Make",
+    "aptPackages": "make",
+    "queryCommand": "make",
+    "category": "Development",
+    "description": "Build engineering and task automation helper",
+    "required": true
+  },
+  {
+    "id": "ripgrep",
+    "displayName": "Ripgrep",
+    "aptPackages": "ripgrep",
+    "queryCommand": "rg",
+    "category": "Utility",
+    "description": "Fast, modern line-oriented search tool",
+    "required": true
+  },
+  {
+    "id": "htop",
+    "displayName": "Htop",
+    "aptPackages": "htop",
+    "queryCommand": "htop",
+    "category": "Utility",
+    "description": "Interactive process viewer and system monitor",
+    "required": true
+  },
+  {
+    "id": "nano",
+    "displayName": "Nano",
+    "aptPackages": "nano",
+    "queryCommand": "nano",
+    "category": "Development",
+    "description": "Simple, easy-to-use terminal-based text editor",
+    "required": true
+  },
+  {
+    "id": "openssh",
+    "displayName": "OpenSSH",
+    "aptPackages": "openssh-client openssh-server",
+    "queryCommand": "ssh",
+    "category": "Network",
+    "description": "Secure shell client for remote terminal logins",
+    "required": true
+  },
+  {
+    "id": "unzip",
+    "displayName": "Unzip",
+    "aptPackages": "unzip",
+    "queryCommand": "unzip",
+    "category": "Utility",
+    "description": "Extraction and diagnostic utility for ZIP archives",
+    "required": true
+  },
+  {
+    "id": "zip",
+    "displayName": "Zip",
+    "aptPackages": "zip",
+    "queryCommand": "zip",
+    "category": "Utility",
+    "description": "Compression and file packaging utility for ZIP format",
+    "required": true
+  },
+  {
+    "id": "tar",
+    "displayName": "Tar",
+    "aptPackages": "tar",
+    "queryCommand": "tar",
+    "category": "Utility",
+    "description": "GNU absolute tape archiver for tape/tarball archives",
+    "required": true
+  }
+]

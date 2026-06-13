@@ -2,482 +2,620 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import os from "os";
-import { exec, execFile } from "child_process";
-import { randomUUID } from "crypto";
+import { exec } from "child_process";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 
-dotenv.config({ path: ".env.local" });
 dotenv.config();
 
+// Initialize express app
 const app = express();
-const PORT = Number(process.env.PORT || 3000);
-const WORKSPACE_ROOT = path.resolve(process.env.TERMINAI_WORKSPACE_ROOT || process.cwd());
-const COMMAND_TIMEOUT_MS = Number(process.env.TERMINAI_COMMAND_TIMEOUT_MS || 30_000);
-const COMMAND_MAX_BUFFER = Number(process.env.TERMINAI_COMMAND_MAX_BUFFER || 1024 * 1024);
-const TELEMETRY_FILE = "terminai_telemetry.json";
+const PORT = 3000;
 
-app.use(express.json({ limit: "1mb" }));
+// Body parser
+app.use(express.json());
 
+// Lazy-loaded Gemini Client following guidance
 let aiClient: GoogleGenAI | null = null;
-let deviceClipboard = "TerminAI: Seamless local pipeline active.";
-let deviceSettings = {
-  batteryLevel: 82,
-  batteryTemperature: "28.5 °C",
-  isCharging: false,
-  networkSsid: "TerminAI_Local_Link",
-  permissions: {
-    camera: "prompt",
-    gps: "prompt",
-    microphone: "prompt",
-    storage: "granted",
-  },
-};
 
 function getGeminiClient(): GoogleGenAI {
   if (!aiClient) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is not configured. Set it only when AI command optimization is needed.");
+      throw new Error("GEMINI_API_KEY environment variable is not defined. Please configure secrets.");
     }
-    aiClient = new GoogleGenAI({ apiKey });
+    aiClient = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
   }
   return aiClient;
-}
-
-function isInsideWorkspace(candidatePath: string): boolean {
-  const resolved = path.resolve(candidatePath);
-  return resolved === WORKSPACE_ROOT || resolved.startsWith(WORKSPACE_ROOT + path.sep);
-}
-
-function resolveWorkspacePath(inputPath = "."): string {
-  const resolved = path.resolve(WORKSPACE_ROOT, inputPath);
-  if (!isInsideWorkspace(resolved)) {
-    throw new Error("Access denied: path escapes TerminAI workspace root.");
-  }
-  return resolved;
-}
-
-function firstVersionLine(output: string): string {
-  const firstLine = output.trim().split("\n")[0] || "Detected";
-  const match = firstLine.match(/(\d+\.\d+(\.\d+)?)/);
-  return match ? match[0] : firstLine.slice(0, 40);
-}
-
-function commandOptimizerInstruction(): string {
-  return `You are TerminAI's shell command optimizer. Translate a user's goal into one concise, modern, local terminal command.
-
-Return only a JSON object with this shape:
-{
-  "optimizedCommand": "single-line shell command",
-  "explanation": "brief explanation of why this command is useful and what its flags do",
-  "alternative": "safer dry-run or lower-risk alternative"
-}
-
-Prefer safe, inspectable commands. Avoid destructive commands unless the user's request explicitly requires them, and provide a safer alternative when risk exists.`;
-}
-
-function defaultTelemetryData() {
-  return {
-    appName: "TerminAI Desktop",
-    packageName: "io.terminai.app",
-    versionName: "0.1.0",
-    versionCode: 1,
-    buildProfile: "Debug",
-    targetAbis: ["arm64-v8a", "armeabi-v7a", "x86_64", "x86"],
-    keystoreSigning: "Self-signed Developer Certificate",
-    minSdkVersion: 26,
-    targetSdkVersion: 34,
-    artifactOutputName: "terminai-debug-v0.1.0.apk",
-    lastCompileTimestamp: new Date().toISOString(),
-  };
-}
-
-function readTelemetryData() {
-  const telemetryPath = resolveWorkspacePath(TELEMETRY_FILE);
-  const fallback = defaultTelemetryData();
-
-  try {
-    if (!fs.existsSync(telemetryPath)) {
-      fs.writeFileSync(telemetryPath, JSON.stringify(fallback, null, 2), "utf-8");
-      return fallback;
-    }
-
-    const saved = JSON.parse(fs.readFileSync(telemetryPath, "utf-8"));
-    return { ...fallback, ...saved };
-  } catch (error) {
-    console.error("Failed to load telemetry artifact file:", error);
-    return fallback;
-  }
-}
-
-function writeTelemetryData(telemetry: Record<string, unknown>) {
-  const telemetryPath = resolveWorkspacePath(TELEMETRY_FILE);
-  fs.writeFileSync(telemetryPath, JSON.stringify({ ...defaultTelemetryData(), ...telemetry }, null, 2), "utf-8");
 }
 
 // ----------------------------------------------------
 // API ROUTES
 // ----------------------------------------------------
 
-app.get("/api/health", (_req, res) => {
-  res.json({
-    status: "ok",
-    app: "TerminAI",
-    workspaceRoot: WORKSPACE_ROOT,
-  });
+// Health Check
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok" });
 });
 
-app.get("/api/system/stats", (_req, res) => {
+// Real-time System Statistics (CPU, Memory, Disk, Environment)
+app.get("/api/system/stats", (req, res) => {
   try {
     const memoryFree = os.freemem();
     const memoryTotal = os.totalmem();
     const memoryUsage = memoryTotal > 0 ? ((memoryTotal - memoryFree) / memoryTotal) * 100 : 0;
-    const loadAvg = os.loadavg();
+    const uptime = os.uptime();
+    const loadAvg = os.loadavg() || [0, 0, 0];
+    const osType = os.type();
+    const osRelease = os.release();
 
-    execFile("df", ["-h", WORKSPACE_ROOT], { timeout: 5000 }, (err, stdout) => {
-      let diskInfo = { total: "unknown", used: "unknown", free: "unknown", percent: "unknown" };
-      if (!err && stdout) {
-        const lines = stdout.trim().split("\n");
-        const parts = lines[lines.length - 1]?.trim().split(/\s+/) || [];
-        if (parts.length >= 5) {
-          diskInfo = {
-            total: parts[1],
-            used: parts[2],
-            free: parts[3],
-            percent: parts[4],
-          };
+    const loadVal = typeof loadAvg[0] === "number" ? loadAvg[0] : 0;
+    const cpuCores = Array.isArray(os.cpus()) ? os.cpus().length : 1;
+    let cpuModel = "Intel/AMD CPU";
+    try {
+      const cpus = os.cpus();
+      if (cpus && cpus[0] && cpus[0].model) {
+        cpuModel = cpus[0].model;
+      }
+    } catch (e) {
+      console.error("Failed to fetch CPU model:", e);
+    }
+
+    exec("df -h . | tail -1", (err, stdout) => {
+      let diskInfo = { total: "10GB", used: "2GB", free: "8GB", percent: "20%" };
+      try {
+        if (!err && stdout) {
+          const parts = stdout.trim().split(/\s+/);
+          if (parts.length >= 5) {
+            diskInfo = {
+              total: parts[1] || "10GB",
+              used: parts[2] || "2GB",
+              free: parts[3] || "8GB",
+              percent: parts[4] || "20%"
+            };
+          }
         }
+      } catch (innerErr) {
+        console.error("DF output parsing error:", innerErr);
       }
 
-      res.json({
-        cpu: {
-          load: parseFloat((loadAvg[0] || 0).toFixed(2)),
-          cores: os.cpus().length,
-          model: os.cpus()[0]?.model || "Unknown CPU",
-        },
-        memory: {
-          total: `${(memoryTotal / (1024 * 1024 * 1024)).toFixed(2)} GB`,
-          free: `${(memoryFree / (1024 * 1024 * 1024)).toFixed(2)} GB`,
-          percent: parseFloat(memoryUsage.toFixed(1)),
-        },
-        disk: diskInfo,
-        uptime: os.uptime(),
-        os: {
-          type: os.type(),
-          release: os.release(),
-          platform: os.platform(),
-        },
-        cwd: WORKSPACE_ROOT,
-      });
+      try {
+        res.json({
+          cpu: {
+            load: parseFloat(loadVal.toFixed(2)),
+            cores: cpuCores,
+            model: cpuModel
+          },
+          memory: {
+            total: (memoryTotal / (1024 * 1024 * 1024)).toFixed(2) + " GB",
+            free: (memoryFree / (1024 * 1024 * 1024)).toFixed(2) + " GB",
+            percent: parseFloat(memoryUsage.toFixed(1))
+          },
+          disk: diskInfo,
+          uptime,
+          os: {
+            type: osType,
+            release: osRelease,
+            platform: os.platform()
+          },
+          cwd: process.cwd()
+        });
+      } catch (sendError: any) {
+        console.error("Failed to send stats response:", sendError);
+        if (!res.headersSent) {
+          res.status(500).json({ error: sendError.message });
+        }
+      }
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    console.error("Failed in stats route:", error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
   }
 });
 
+// Secure Real Terminal Command Executor with Smart Directory Tracking
 app.post("/api/terminal/execute", (req, res) => {
-  const { command, cwd } = req.body as { command?: string; cwd?: string };
-  if (!command?.trim()) {
-    return res.status(400).json({ error: "Command is required." });
+  const { command, cwd } = req.body;
+  if (!command) {
+    return res.status(400).json({ error: "Command is required" });
   }
 
-  let activeCwd: string;
+  const activeCwd = cwd || process.cwd();
+  const marker = "__CWD_SEPARATOR_44fb5948__";
+  
+  // We couple the user command and always print pwd after. Use semicolon to execute pwd even if preceding fails.
+  const fullCommand = `${command} ; echo "" ; echo "${marker}" ; pwd`;
+
   try {
-    activeCwd = resolveWorkspacePath(cwd || ".");
+    exec(fullCommand, { cwd: activeCwd, env: { ...process.env, LANG: "en_US.UTF-8" } }, (error, stdout, stderr) => {
+      try {
+        const stdoutStr = stdout || "";
+        // Split the stdout string by separator to capture CLI output vs ending directory
+        const parts = stdoutStr.split(marker);
+        let commandOutput = parts[0] || "";
+        let finalCwd = parts[1] ? parts[1].trim() : activeCwd;
+
+        // Clean up trailing and leading spaces/newlines from system output
+        commandOutput = commandOutput.replace(/[\r\n]+$/, "");
+
+        // Gracefully clamp directory resolved checks
+        try {
+          if (!fs.existsSync(finalCwd) || !fs.statSync(finalCwd).isDirectory()) {
+            finalCwd = activeCwd;
+          }
+        } catch (e) {
+          finalCwd = activeCwd;
+        }
+
+        res.json({
+          stdout: commandOutput,
+          stderr: stderr || "",
+          code: error ? (error.code ?? 1) : 0,
+          newCwd: finalCwd
+        });
+      } catch (innerErr: any) {
+        console.error("Terminal callback internal exception:", innerErr);
+        if (!res.headersSent) {
+          res.status(500).json({ error: innerErr.message });
+        }
+      }
+    });
   } catch (error: any) {
-    return res.status(403).json({ error: error.message });
+    console.error("Terminal top-level execute error:", error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
   }
-
-  const marker = `__TERMINAI_CWD_${randomUUID().replace(/-/g, "")}__`;
-  const fullCommand = `${command}\nCOMMAND_STATUS=$?\necho ""\necho "${marker}"\npwd\nexit $COMMAND_STATUS`;
-
-  exec(
-    fullCommand,
-    {
-      cwd: activeCwd,
-      env: { ...process.env, LANG: "en_US.UTF-8" },
-      timeout: COMMAND_TIMEOUT_MS,
-      maxBuffer: COMMAND_MAX_BUFFER,
-    },
-    (error: any, stdout, stderr) => {
-      const parts = stdout.split(marker);
-      const commandOutput = (parts[0] || "").replace(/[\r\n]+$/, "");
-      const reportedCwd = parts[1]?.trim();
-      const finalCwd = reportedCwd && isInsideWorkspace(reportedCwd) ? path.resolve(reportedCwd) : activeCwd;
-
-      res.json({
-        stdout: commandOutput,
-        stderr: stderr || "",
-        code: error ? error.code ?? 1 : 0,
-        newCwd: finalCwd,
-        timedOut: Boolean(error?.killed),
-      });
-    },
-  );
 });
 
+// Local file browser APIs (File Tree explorer)
 app.post("/api/file-manager/list", (req, res) => {
-  const { dir } = req.body as { dir?: string };
-  let targetDir: string;
+  const { dir } = req.body;
+  const baseDir = process.cwd();
+  const targetDir = dir ? path.resolve(baseDir, dir) : baseDir;
 
-  try {
-    targetDir = resolveWorkspacePath(dir || ".");
-  } catch (error: any) {
-    return res.status(403).json({ error: error.message });
+  // Sandbox check to avoid listing outside of dev environment folder if restrictive
+  if (!targetDir.startsWith(baseDir)) {
+    return res.status(403).json({ error: "Access Denied: Sandbox escape prevented." });
   }
 
   try {
     if (!fs.existsSync(targetDir)) {
-      return res.status(404).json({ error: "Directory not found." });
+      return res.status(404).json({ error: "Directory not found" });
     }
-
-    const files = fs.readdirSync(targetDir).map((file) => {
+    const files = fs.readdirSync(targetDir);
+    const results = files.map(file => {
       const fullPath = path.join(targetDir, file);
-      const stat = fs.statSync(fullPath);
-      const relativePath = path.relative(WORKSPACE_ROOT, fullPath);
-      return {
-        name: file,
-        path: relativePath === "" ? "." : relativePath,
-        type: stat.isDirectory() ? "directory" : "file",
-        size: stat.size,
-        mtime: stat.mtime.toISOString(),
-      };
+      try {
+        const stat = fs.statSync(fullPath);
+        const relativePath = path.relative(baseDir, fullPath);
+        return {
+          name: file,
+          path: relativePath === "" ? "." : relativePath,
+          type: stat.isDirectory() ? "directory" : "file",
+          size: stat.size,
+          mtime: stat.mtime.toISOString(),
+        };
+      } catch {
+        return {
+          name: file,
+          path: path.relative(baseDir, fullPath),
+          type: "file",
+          size: 0,
+          mtime: new Date().toISOString()
+        };
+      }
     });
-
     res.json({
-      files,
-      currentFolder: path.relative(WORKSPACE_ROOT, targetDir) || ".",
+      files: results,
+      currentFolder: path.relative(baseDir, targetDir) || "."
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// File reader
 app.post("/api/file-manager/read", (req, res) => {
-  const { filePath } = req.body as { filePath?: string };
-  if (!filePath) return res.status(400).json({ error: "File path is required." });
+  const { filePath } = req.body;
+  if (!filePath) return res.status(400).json({ error: "File path is required" });
+
+  const baseDir = process.cwd();
+  const resolvedPath = path.resolve(baseDir, filePath);
+
+  if (!resolvedPath.startsWith(baseDir)) {
+    return res.status(403).json({ error: "Access Denied." });
+  }
 
   try {
-    const resolvedPath = resolveWorkspacePath(filePath);
     if (!fs.existsSync(resolvedPath)) {
-      return res.status(404).json({ error: "File not found." });
+      return res.status(404).json({ error: "File not found" });
     }
-    if (!fs.statSync(resolvedPath).isFile()) {
-      return res.status(400).json({ error: "Path is not a file." });
-    }
-    res.json({ content: fs.readFileSync(resolvedPath, "utf-8") });
+    const content = fs.readFileSync(resolvedPath, "utf-8");
+    res.json({ content });
   } catch (error: any) {
-    const status = error.message?.includes("Access denied") ? 403 : 500;
-    res.status(status).json({ error: error.message });
+    res.status(500).json({ error: error.message });
   }
 });
 
+// File writer
 app.post("/api/file-manager/write", (req, res) => {
-  const { filePath, content } = req.body as { filePath?: string; content?: string };
-  if (!filePath) return res.status(400).json({ error: "File path is required." });
+  const { filePath, content } = req.body;
+  if (!filePath) return res.status(400).json({ error: "File path is required" });
+
+  const baseDir = process.cwd();
+  const resolvedPath = path.resolve(baseDir, filePath);
+
+  if (!resolvedPath.startsWith(baseDir)) {
+    return res.status(403).json({ error: "Access Denied." });
+  }
 
   try {
-    const resolvedPath = resolveWorkspacePath(filePath);
-    fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
+    const parentDir = path.dirname(resolvedPath);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
     fs.writeFileSync(resolvedPath, content || "", "utf-8");
     res.json({ success: true });
   } catch (error: any) {
-    const status = error.message?.includes("Access denied") ? 403 : 500;
-    res.status(status).json({ error: error.message });
+    res.status(500).json({ error: error.message });
   }
 });
 
+// File/Folder deleter
 app.post("/api/file-manager/delete", (req, res) => {
-  const { targetPath } = req.body as { targetPath?: string };
-  if (!targetPath) return res.status(400).json({ error: "Path is required." });
+  const { targetPath } = req.body;
+  if (!targetPath) return res.status(400).json({ error: "Path is required" });
+
+  const baseDir = process.cwd();
+  const resolvedPath = path.resolve(baseDir, targetPath);
+
+  if (!resolvedPath.startsWith(baseDir) || resolvedPath === baseDir) {
+    return res.status(403).json({ error: "Access Denied: Deletion restricted." });
+  }
 
   try {
-    const resolvedPath = resolveWorkspacePath(targetPath);
-    if (resolvedPath === WORKSPACE_ROOT) {
-      return res.status(403).json({ error: "Access denied: cannot delete workspace root." });
-    }
-    if (!fs.existsSync(resolvedPath)) {
-      return res.status(404).json({ error: "File or folder does not exist." });
-    }
-
-    const stat = fs.statSync(resolvedPath);
-    if (stat.isDirectory()) {
-      fs.rmSync(resolvedPath, { recursive: true, force: true });
+    if (fs.existsSync(resolvedPath)) {
+      const stat = fs.statSync(resolvedPath);
+      if (stat.isDirectory()) {
+        fs.rmSync(resolvedPath, { recursive: true, force: true });
+      } else {
+        fs.unlinkSync(resolvedPath);
+      }
+      res.json({ success: true });
     } else {
-      fs.unlinkSync(resolvedPath);
+      res.status(404).json({ error: "File/Folder does not exist." });
     }
-    res.json({ success: true });
   } catch (error: any) {
-    const status = error.message?.includes("Access denied") ? 403 : 500;
-    res.status(status).json({ error: error.message });
+    res.status(500).json({ error: error.message });
   }
 });
 
+// Folder creator
 app.post("/api/file-manager/create-folder", (req, res) => {
-  const { dirPath, name } = req.body as { dirPath?: string; name?: string };
-  if (!name) return res.status(400).json({ error: "Folder name is required." });
-  if (name.includes(path.sep) || name.includes("..")) {
-    return res.status(400).json({ error: "Folder name must be a simple directory name." });
+  const { dirPath, name } = req.body;
+  if (!name) return res.status(400).json({ error: "Folder name is required" });
+
+  const baseDir = process.cwd();
+  const parentFolder = dirPath ? path.resolve(baseDir, dirPath) : baseDir;
+  const targetFolder = path.join(parentFolder, name);
+
+  if (!targetFolder.startsWith(baseDir)) {
+    return res.status(403).json({ error: "Access Denied." });
   }
 
   try {
-    const parentFolder = resolveWorkspacePath(dirPath || ".");
-    const targetFolder = resolveWorkspacePath(path.join(path.relative(WORKSPACE_ROOT, parentFolder), name));
-    if (fs.existsSync(targetFolder)) {
-      return res.status(400).json({ error: "Folder already exists." });
+    if (!fs.existsSync(targetFolder)) {
+      fs.mkdirSync(targetFolder, { recursive: true });
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ error: "Folder already exists" });
     }
-    fs.mkdirSync(targetFolder, { recursive: true });
-    res.json({ success: true });
   } catch (error: any) {
-    const status = error.message?.includes("Access denied") ? 403 : 500;
-    res.status(status).json({ error: error.message });
+    res.status(500).json({ error: error.message });
   }
 });
 
-app.get("/api/package-manager/list", (_req, res) => {
-  const tools = [
-    { name: "git", queryCmd: "git", description: "Distributed version control system", category: "Version Control" },
-    { name: "curl", queryCmd: "curl", description: "Command line tool for transferring data via URL", category: "Network" },
-    { name: "wget", queryCmd: "wget", description: "Non-interactive network downloader", category: "Network" },
-    { name: "jq", queryCmd: "jq", description: "Command-line JSON query processor", category: "Utility" },
-    { name: "tmux", queryCmd: "tmux", description: "Terminal session multiplexer", category: "Terminal" },
-    { name: "sqlite3", queryCmd: "sqlite3", description: "SQLite command-line shell", category: "Database" },
-    { name: "python3", queryCmd: "python3", description: "Python interpreter", category: "Runtime" },
-    { name: "node", queryCmd: "node", description: "Node.js JavaScript runtime", category: "Runtime" },
-    { name: "npm", queryCmd: "npm", description: "Node package manager", category: "Runtime" },
-    { name: "gcc", queryCmd: "gcc", description: "GNU C compiler", category: "Development" },
-    { name: "build-essential", queryCmd: "make", description: "Build toolchain meta-package", category: "Development" },
-    { name: "make", queryCmd: "make", description: "Build automation helper", category: "Development" },
-    { name: "ripgrep", queryCmd: "rg", description: "Fast, modern line-oriented search tool", category: "Utility" },
-    { name: "htop", queryCmd: "htop", description: "Interactive process viewer", category: "Utility" },
-    { name: "nano", queryCmd: "nano", description: "Terminal text editor", category: "Development" },
-    { name: "openssh", queryCmd: "ssh", description: "Secure shell client", category: "Network" },
-    { name: "unzip", queryCmd: "unzip", description: "ZIP extraction utility", category: "Utility" },
-    { name: "zip", queryCmd: "zip", description: "ZIP packaging utility", category: "Utility" },
-    { name: "tar", queryCmd: "tar", description: "Tar archive utility", category: "Utility" },
-  ];
+// Package manager helper - Query native installations of standard development CLI tools
+app.get("/api/package-manager/list", (req, res) => {
+  const baseDir = process.env.TERMINAI_WORKSPACE_ROOT || process.cwd();
+  const manifestPath = path.join(baseDir, "runtime", "package-baseline.json");
 
-  const finder = process.platform === "win32" ? "where" : "which";
+  let tools: any[] = [];
+  try {
+    if (fs.existsSync(manifestPath)) {
+      const manifestRaw = fs.readFileSync(manifestPath, "utf-8");
+      tools = JSON.parse(manifestRaw);
+    } else {
+      console.warn(`[Package Manager] Baseline manifest not found at: ${manifestPath}, using fallback list`);
+      tools = [
+        { id: "git", displayName: "Git", aptPackages: "git", queryCommand: "git", category: "Version Control", description: "Distributed version control system", required: true },
+        { id: "curl", displayName: "Curl", aptPackages: "curl", queryCommand: "curl", category: "Network", description: "Command line tool for transferring data via URL", required: true },
+        { id: "wget", displayName: "Wget", aptPackages: "wget", queryCommand: "wget", category: "Network", description: "Non-interactive network downloader", required: true },
+        { id: "jq", displayName: "JQ", aptPackages: "jq", queryCommand: "jq", category: "Utility", description: "Command-line light JSON query processor", required: true },
+        { id: "tmux", displayName: "Tmux", aptPackages: "tmux", queryCommand: "tmux", category: "Terminal", description: "Terminal session multiplexer window manager", required: true },
+        { id: "sqlite3", displayName: "SQLite3", aptPackages: "sqlite3", queryCommand: "sqlite3", category: "Database", description: "Command-line dynamic shell for SQLite DBs", required: true },
+        { id: "python3", displayName: "Python3", aptPackages: "python3", queryCommand: "python3", category: "Runtime", description: "Python interpreter language runtime", required: true },
+        { id: "nodejs", displayName: "Node.js", aptPackages: "nodejs", queryCommand: "node", category: "Runtime", description: "Node.js JavaScript server runtime engine", required: true },
+        { id: "npm", displayName: "NPM", aptPackages: "npm", queryCommand: "npm", category: "Runtime", description: "Node package package indexing manager", required: true },
+        { id: "gcc", displayName: "GCC", aptPackages: "gcc", queryCommand: "gcc", category: "Development", description: "GNU Compiler C language compiler core", required: true },
+        { id: "build-essential", displayName: "Build Essential", aptPackages: "build-essential", queryCommand: "make", category: "Development", description: "Meta-package for compiling software (make, gcc, libc)", required: true },
+        { id: "make", displayName: "Make", aptPackages: "make", queryCommand: "make", category: "Development", description: "Build engineering and task automation helper", required: true },
+        { id: "ripgrep", displayName: "Ripgrep", aptPackages: "ripgrep", queryCommand: "rg", category: "Utility", description: "Fast, modern line-oriented search tool", required: true },
+        { id: "htop", displayName: "Htop", aptPackages: "htop", queryCommand: "htop", category: "Utility", description: "Interactive process viewer and system monitor", required: true },
+        { id: "nano", displayName: "Nano", aptPackages: "nano", queryCommand: "nano", category: "Development", description: "Simple, easy-to-use terminal-based text editor", required: true },
+        { id: "openssh", displayName: "OpenSSH", aptPackages: "openssh-client openssh-server", queryCommand: "ssh", category: "Network", description: "Secure shell client for remote terminal logins", required: true },
+        { id: "unzip", displayName: "Unzip", aptPackages: "unzip", queryCommand: "unzip", category: "Utility", description: "Extraction and diagnostic utility for ZIP archives", required: true },
+        { id: "zip", displayName: "Zip", aptPackages: "zip", queryCommand: "zip", category: "Utility", description: "Compression and file packaging utility for ZIP format", required: true },
+        { id: "tar", displayName: "Tar", aptPackages: "tar", queryCommand: "tar", category: "Utility", description: "GNU absolute tape archiver for tape/tarball archives", required: true }
+      ];
+    }
+  } catch (err) {
+    console.error("Failed to read runtime baseline packages manifest:", err);
+  }
 
   Promise.all(
-    tools.map(
-      (tool) =>
-        new Promise<any>((resolve) => {
-          execFile(finder, [tool.queryCmd], { timeout: 5000 }, (err, stdout) => {
-            if (err || !stdout) {
-              resolve({ name: tool.name, description: tool.description, category: tool.category, installed: false, version: null });
-              return;
-            }
-
-            execFile(tool.queryCmd, ["--version"], { timeout: 5000 }, (versionErr, versionStdout) => {
+    tools.map(tool => {
+      return new Promise<any>((resolve) => {
+        const cmdName = tool.queryCommand || tool.queryCmd || tool.id;
+        exec(`which ${cmdName}`, (err, stdout) => {
+          if (err || !stdout) {
+            resolve({
+              id: tool.id,
+              name: tool.id || tool.name,
+              displayName: tool.displayName || tool.id,
+              aptPackages: tool.aptPackages,
+              queryCommand: cmdName,
+              description: tool.description,
+              category: tool.category,
+              required: tool.required !== false,
+              installed: false,
+              version: null
+            });
+          } else {
+            const versionCmd = cmdName === "gcc" ? "gcc --version | head -n 1" : `${cmdName} --version || ${cmdName} -v`;
+            exec(versionCmd, (vErr, vStdout) => {
+              let version = "Detected";
+              try {
+                if (!vErr && vStdout) {
+                  const firstLine = vStdout.trim().split("\n")[0];
+                  if (firstLine) {
+                    const match = firstLine.match(/(\d+\.\d+(\.\d+)?)/);
+                    version = match ? match[0] : firstLine.substring(0, 24);
+                  }
+                }
+              } catch (parseErr) {
+                console.error("Failed to parse utility tool version:", parseErr);
+              }
               resolve({
-                name: tool.name,
+                id: tool.id,
+                name: tool.id || tool.name,
+                displayName: tool.displayName || tool.id,
+                aptPackages: tool.aptPackages,
+                queryCommand: cmdName,
                 description: tool.description,
                 category: tool.category,
+                required: tool.required !== false,
                 installed: true,
-                version: versionErr ? "Detected" : firstVersionLine(versionStdout),
+                version
               });
             });
-          });
-        }),
-    ),
-  )
-    .then((tools) => res.json({ tools }))
-    .catch((error) => res.status(500).json({ error: error.message }));
+          }
+        });
+      });
+    })
+  ).then(results => {
+    res.json({ tools: results });
+  }).catch(error => {
+    res.status(500).json({ error: error.message });
+  });
 });
 
-app.get("/api/device/build-status", (_req, res) => {
-  const telemetry = readTelemetryData();
+// Device & Build Status API layer (TerminAI runtime modules)
+let deviceClipboard = "TerminAI: Seamless local pipeline active.";
+let deviceSettings = {
+  batteryLevel: 82,
+  batteryTemperature: "28.5 °C",
+  isCharging: false,
+  networkSsid: "TerminAI_Secure_WiFi",
+  permissions: {
+    camera: "granted",
+    gps: "granted",
+    microphone: "prompt",
+    storage: "granted"
+  }
+};
+
+app.get("/api/device/build-status", (req, res) => {
+  const baseDir = process.env.TERMINAI_WORKSPACE_ROOT || process.cwd();
+  const telemetryPath = path.join(baseDir, "terminai_telemetry.json");
+
+  let telemetryData = {
+    appName: "TerminAI Desktop",
+    packageName: "io.terminai.app",
+    versionName: "1.0.4",
+    versionCode: 104,
+    buildProfile: "Debug",
+    targetAbis: ["arm64-v8a", "x86_64"],
+    keystoreSigning: "Self-signed Developer Certificate",
+    minSdkVersion: 26,
+    targetSdkVersion: 34,
+    artifactOutputName: "terminai-debug-v1.0.4.apk",
+    lastCompileTimestamp: new Date().toISOString()
+  };
+
+  try {
+    if (fs.existsSync(telemetryPath)) {
+      const saved = fs.readFileSync(telemetryPath, "utf-8");
+      telemetryData = { ...telemetryData, ...JSON.parse(saved) };
+    } else {
+      fs.writeFileSync(telemetryPath, JSON.stringify(telemetryData, null, 2), "utf-8");
+    }
+  } catch (err) {
+    console.error("Failed to load or initialize telemetry artifact file:", err);
+  }
+
   res.json({
-    telemetry,
+    telemetry: telemetryData,
     device: {
       ...deviceSettings,
       clipboard: deviceClipboard,
       systemSdk: 34,
       manufacturer: "TerminAI",
       brand: "Generic Virtual Device",
-      cpuArch: os.arch(),
-    },
+      cpuArch: os.arch()
+    }
   });
 });
 
 app.post("/api/device/build-status", (req, res) => {
-  const { telemetry, device } = req.body as { telemetry?: Record<string, unknown>; device?: any };
+  const baseDir = process.env.TERMINAI_WORKSPACE_ROOT || process.cwd();
+  const telemetryPath = path.join(baseDir, "terminai_telemetry.json");
+  const { telemetry, device } = req.body;
 
   if (device) {
-    if (typeof device.clipboard === "string") deviceClipboard = device.clipboard;
-    if (device.permissions && typeof device.permissions === "object") {
+    if (typeof device.clipboard === "string") {
+      deviceClipboard = device.clipboard;
+    }
+    if (device.permissions) {
       deviceSettings.permissions = { ...deviceSettings.permissions, ...device.permissions };
     }
-    if (typeof device.batteryLevel === "number") deviceSettings.batteryLevel = device.batteryLevel;
-    if (typeof device.batteryTemperature === "string") deviceSettings.batteryTemperature = device.batteryTemperature;
-    if (typeof device.isCharging === "boolean") deviceSettings.isCharging = device.isCharging;
-    if (typeof device.networkSsid === "string") deviceSettings.networkSsid = device.networkSsid;
+    if (typeof device.batteryLevel === "number") {
+      deviceSettings.batteryLevel = device.batteryLevel;
+    }
+    if (typeof device.isCharging === "boolean") {
+      deviceSettings.isCharging = device.isCharging;
+    }
   }
 
   if (telemetry) {
     try {
-      writeTelemetryData(telemetry);
-    } catch (error: any) {
-      return res.status(500).json({ error: `Save failed: ${error.message}` });
+      fs.writeFileSync(telemetryPath, JSON.stringify(telemetry, null, 2), "utf-8");
+    } catch (err: any) {
+      return res.status(500).json({ error: `Save failed: ${err.message}` });
     }
   }
 
-  res.json({ success: true, message: "Device & Build telemetry updated successfully." });
+  res.json({ success: true, message: "Device & Build telemetry updated successfully!" });
 });
 
+// Intelligent Task and Shell Command optimizer using Gemini or OpenRouter
 app.post("/api/gemini/optimize-command", async (req, res) => {
-  const { prompt, currentContext } = req.body as { prompt?: string; currentContext?: string };
-  if (!prompt?.trim()) {
-    return res.status(400).json({ error: "User goal or intent is required." });
+  const { prompt, currentContext } = req.body;
+  if (!prompt) {
+    return res.status(400).json({ error: "User goal/intent is required." });
   }
 
-  const systemInstruction = commandOptimizerInstruction();
-  const contents = `User request: ${prompt}\nCurrent workspace context: ${currentContext || WORKSPACE_ROOT}`;
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
+  const systemInstruction = `You are Terminai's Intelligent AI Shell Optimizer. Your task is to translate natural language intentions into highly optimized, safe, modern, and rapid Linux/Bash terminal commands (e.g. suggesting elegant xargs, modern find, sed/awk, custom short loops, or parallel execution hacks).
 
-  const openRouterKey = process.env.OPENROUTER_API_KEY?.trim();
-  if (openRouterKey) {
+You MUST return a structure-validated JSON object satisfying this precise schema:
+{
+  "optimizedCommand": "The actual single-line executable bash command",
+  "explanation": "A clean, concise 1-2 paragraph markdown explanation detailing why this is fast and which flags do what.",
+  "alternative": "A safer, localized, dry-run alternative command or tips."
+}
+No other text envelopes. Just output the clean JSON object. Ensure the commands represent actual Unix/Ubuntu commands found in standard workspaces.`;
+
+  const contents = `Translate this user request to an optimized command: "${prompt}".
+Active directory or context string: "${currentContext || 'Workspace Root'}"`;
+
+  // Helper to clean and parse response from OpenRouter/LLM that might have Markdown wrapping or reasoning tags (<think>)
+  function cleanResponseJSON(text: string): string {
+    let cleaned = text.trim();
+    
+    // Strip <think>...</think> reasoning tags if present
+    cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+    
+    // Remove markdown code fences if present (e.g. ```json ... ```)
+    if (cleaned.startsWith("```")) {
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, "");
+      cleaned = cleaned.replace(/\s*```$/, "");
+      cleaned = cleaned.trim();
+    }
+    
+    // Locate the first '{' and last '}' to isolate JSON
+    const startIdx = cleaned.indexOf("{");
+    const endIdx = cleaned.lastIndexOf("}");
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      cleaned = cleaned.substring(startIdx, endIdx + 1);
+    }
+    
+    return cleaned;
+  }
+
+  // 1. If OpenRouter API Key is active, route through OpenRouter
+  if (openrouterKey && openrouterKey.trim() !== "") {
     try {
       const model = process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash";
+      console.log(`[OpenRouter] Sending request using model: ${model}`);
+      
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${openRouterKey}`,
-          "HTTP-Referer": "https://github.com/billybox1926-jpg/Terminai",
-          "X-Title": "TerminAI",
+          "Authorization": `Bearer ${openrouterKey.trim()}`,
+          "HTTP-Referer": "https://github.com/termux/termux-app",
+          "X-Title": "Terminai Client"
         },
         body: JSON.stringify({
           model,
           messages: [
             { role: "system", content: systemInstruction },
-            { role: "user", content: contents },
-          ],
-          response_format: { type: "json_object" },
-        }),
+            { role: "user", content: contents }
+          ]
+          // Note: Omitting response_format for safety so it is compatible with 100% of OpenRouter models (including thinking and legacy models).
+        })
       });
 
       if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`OpenRouter returned ${response.status}: ${errorBody}`);
+        const errBody = await response.text();
+        throw new Error(`OpenRouter API response error ${response.status}: ${errBody}`);
       }
 
-      const data = await response.json();
-      const outputText = data.choices?.[0]?.message?.content;
-      if (!outputText) throw new Error("OpenRouter returned no command optimizer content.");
-      return res.json(JSON.parse(outputText.trim()));
-    } catch (error: any) {
-      return res.status(500).json({ error: `OpenRouter request failed: ${error.message}` });
+      const resData = await response.json();
+      console.log("[OpenRouter Debug] Full response body successfully parsed.");
+      
+      if (resData.error) {
+        throw new Error(`OpenRouter error payload returned: ${resData.error.message || JSON.stringify(resData.error)}`);
+      }
+
+      const outputText = resData.choices?.[0]?.message?.content;
+      if (!outputText) {
+        console.error("[OpenRouter Debug] Empty choices object:", JSON.stringify(resData));
+        throw new Error("No payload content returned in OpenRouter chat completions response.");
+      }
+
+      const cleanOutput = cleanResponseJSON(outputText);
+      const parsedJSON = JSON.parse(cleanOutput);
+      return res.json(parsedJSON);
+    } catch (err: any) {
+      console.error("OpenRouter Execution Error:", err);
+      
+      // If we have standard GEMINI_API_KEY as fallback, we can fall back to standard integration gracefully!
+      if (process.env.GEMINI_API_KEY) {
+        console.warn("⚠️ OpenRouter request failed, falling back to Gemini API endpoint...");
+      } else {
+        return res.status(500).json({ error: `OpenRouter Request Failed: ${err.message}` });
+      }
     }
   }
 
+  // 2. Fallback to standard Google GenAI native platform integration
   try {
     const ai = getGeminiClient();
-    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
     const response = await ai.models.generateContent({
-      model,
+      model: "gemini-3.5-flash",
       contents,
       config: {
         systemInstruction,
@@ -486,20 +624,28 @@ app.post("/api/gemini/optimize-command", async (req, res) => {
           type: Type.OBJECT,
           required: ["optimizedCommand", "explanation", "alternative"],
           properties: {
-            optimizedCommand: { type: Type.STRING, description: "Single-line shell command" },
-            explanation: { type: Type.STRING, description: "Concise explanation" },
-            alternative: { type: Type.STRING, description: "Safer dry-run or alternative" },
-          },
-        },
-      },
+            optimizedCommand: { type: Type.STRING, description: "Highly optimized execution statement ready to run" },
+            explanation: { type: Type.STRING, description: "Detailed visual markdown explanation of the command" },
+            alternative: { type: Type.STRING, description: "Dry-run/safest approach alternative" }
+          }
+        }
+      }
     });
 
     const jsonText = response.text;
-    if (!jsonText) throw new Error("AI optimizer returned an empty response.");
-    res.json(JSON.parse(jsonText.trim()));
+    if (!jsonText) {
+      throw new Error("Failed to secure content response from Gemini model.");
+    }
+    const data = JSON.parse(jsonText.trim());
+    res.json(data);
   } catch (error: any) {
-    const status = error.message?.includes("GEMINI_API_KEY") ? 503 : 500;
-    res.status(status).json({ error: error.message });
+    if (error.message && error.message.includes("GEMINI_API_KEY")) {
+      res.status(500).json({ 
+        error: "Database AI Credentials missing: Please configure either GEMINI_API_KEY or OPENROUTER_API_KEY in active Secrets configurations." 
+      });
+    } else {
+      res.status(500).json({ error: error.message });
+    }
   }
 });
 
@@ -509,33 +655,24 @@ app.post("/api/gemini/optimize-command", async (req, res) => {
 
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
-    try {
-      const vite = await Promise.race([
-        createViteServer({
-          server: { middlewareMode: true },
-          appType: "spa",
-        }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Vite init timeout")), 10000)),
-      ]);
-      app.use((vite as any).middlewares);
-    } catch (viteError: any) {
-      console.warn(`Vite middleware unavailable (${viteError.message}), serving API only. Build with 'npm run build' for static assets.`);
-    }
+    // Integrate Vite as a dev middleware
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
   } else {
+    // Serve static compiled assets in production
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (_req, res) => {
+    app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`TerminAI local workspace listening on http://localhost:${PORT}`);
-    console.log(`Workspace root: ${WORKSPACE_ROOT}`);
+    console.log(`Terminai Graphical Shell Backend actively listening on port ${PORT}`);
   });
 }
 
-startServer().catch((error) => {
-  console.error("Failed to start TerminAI:", error);
-  process.exit(1);
-});
+startServer();

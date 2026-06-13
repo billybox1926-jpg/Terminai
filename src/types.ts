@@ -33,11 +33,16 @@ export interface FileItem {
 }
 
 export interface CLITool {
+  id?: string;
   name: string;
+  displayName?: string;
+  aptPackages?: string;
+  queryCommand?: string;
   description: string;
   category: string;
   installed: boolean;
   version: string | null;
+  required?: boolean;
 }
 
 export interface TerminalLine {
