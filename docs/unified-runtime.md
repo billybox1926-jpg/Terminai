@@ -136,7 +136,18 @@ These are separate. The workspace root is where user files live. The runtime roo
 - Whether runtime assets directories exist
 - Detected `TERMINAI_RUNTIME_ROOT` if set
 - `bundleReady` boolean
-- Notes explaining current mode
+- **Integrity status** (lock file, file counts, missing/changed/extra files)
+- `placeholderMode` boolean
+
+### Bundle Integrity Endpoint
+
+`GET /api/runtime/bundle/integrity` returns only the integrity report:
+- `lockFilePresent` — whether `runtime-bundle.lock.json` exists
+- `placeholderMode` — true when no lock and no real files (expected before native binaries are added)
+- `integrityOk` — true when all files match their SHA-256 checksums
+- `missingFiles` — files in lock but missing from disk
+- `changedFiles` — files with mismatched size or hash
+- `extraFiles` — files on disk but not in lock
 
 ### Runtime Modes
 

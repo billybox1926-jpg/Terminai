@@ -102,20 +102,28 @@ GEMINI_MODEL=gemini-2.5-flash
 If both provider keys are present, TerminAI uses OpenRouter first.
 ## Runtime Bundle
 
-The runtime bundle manifest (`runtime/runtime-bundle.json`) defines how TerminAI packages its runtime for native deployment:
+The runtime bundle manifest (`runtime/runtime-bundle.json`) defines how TerminAI packages its runtime for native deployment. The lock file (`runtime/runtime-bundle.lock.json`) provides SHA-256 integrity verification.
 
 ```text
 runtime/
-├── runtime-bundle.json       # Bundle manifest (source of truth)
-├── package-baseline.json     # Package manifest
-├── api-baseline.json         # API bridge manifest
-├── runtime-state.example.json # Example runtime state
-└── assets/                   # Placeholder for native bundled runtime
+├── runtime-bundle.json           # Bundle manifest (source of truth)
+├── runtime-bundle.lock.example.json  # Example lock structure
+├── package-baseline.json         # Package manifest
+├── api-baseline.json             # API bridge manifest
+├── runtime-state.example.json    # Example runtime state
+└── assets/                       # Placeholder for native bundled runtime
     ├── README.md
     ├── bin/
     ├── lib/
     ├── etc/
     └── home/
+```
+
+### Bundle Commands
+
+```bash
+npm run runtime:bundle    # Build lock file from assets
+npm run runtime:status    # Print runtime config summary
 ```
 
 See `docs/native-runtime-bootstrap.md` for the full native Android locked-and-loaded plan.

@@ -242,6 +242,20 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
               <span>Bundle: {runtimeStatus.bundle.bundleReady ? "ready" : "not ready"}</span>
             </div>
           )}
+          {runtimeStatus?.bundle?.integrity && (
+            <div className="mt-1 pt-1 border-t border-white/5 flex items-center justify-between text-[9px]">
+              <span className="text-white/25">Integrity</span>
+              <span className={`font-bold ${
+                runtimeStatus.bundle.integrity.integrityOk ? "text-emerald-400" :
+                runtimeStatus.bundle.integrity.placeholderMode ? "text-blue-400" :
+                "text-rose-400"
+              }`}>
+                {runtimeStatus.bundle.integrity.placeholderMode ? "PLACEHOLDER" :
+                 runtimeStatus.bundle.integrity.integrityOk ? "OK" :
+                 runtimeStatus.bundle.integrity.lockFilePresent ? "FAILED" : "NO LOCK"}
+              </span>
+            </div>
+          )}
         </div>
       )}
 

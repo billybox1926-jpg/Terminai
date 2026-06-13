@@ -4,6 +4,7 @@ import fs from "fs";
 import os from "os";
 import { exec, execFile } from "child_process";
 import { fileURLToPath } from "url";
+import { createHash } from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1052,11 +1053,155 @@ function checkRuntimeBundleStatus(): any {
   };
 }
 
-// GET /api/runtime/bundle/status
-app.get("/api/runtime/bundle/status", (_req, res) => {
+// ── Runtime Bundle Integrity ──────────────────────────────────────────
+
+const RUNTIME_LOCK_PATH = path.resolve(__dirname, "runtime", "runtime-bundle.lock.json");
+
+function readRuntimeBundleLock(): any {
+  try {
+    if (fs.existsSync(RUNTIME_LOCK_PATH)) {
+      const raw = fs.readFileSync(RUNTIME_LOCK_PATH, "utf-8");
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error("Failed to read runtime bundle lock:", e);
+  }
+  return null;
+}
+
+function scanAssetFiles(dir, baseDir = dir) {
+  const files = [];
+  if (!fs.existsSync(dir)) return files;
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...scanAssetFiles(fullPath, baseDir));
+    } else if (entry.isFile() && entry.name !== ".gitkeep") {
+      const relPath = "/" + path.relative(baseDir, fullPath).replace(/\\/g, "/");
+      files.push({ path: relPath, fullPath });
+    }
+  }
+  return files.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function computeFileHash(filePath) {
+  try {
+    const hash = createHash("sha256");
+    hash.update(fs.readFileSync(filePath));
+    return hash.digest("hex");
+  } catch {
+    return null;
+  }
+}
+
+function checkRuntimeBundleIntegrity(): any {
+  const lock = readRuntimeBundleLock();
+  const bundle = readRuntimeBundle();
+
+  const lockFilePresent = !!lock;
+  const assetFiles = scanAssetFiles(RUNTIME_ASSETS_DIR);
+  const realFileCount = assetFiles.length;
+  const hasRealFiles = realFileCount > 0;
+
+  // Placeholder mode: no lock file and no real files yet
+  const placeholderMode = !lockFilePresent && !hasRealFiles;
+
+  if (!lockFilePresent) {
+    return {
+      lockFilePresent: false,
+      placeholderMode,
+      hasRealFiles,
+      fileCountActual: realFileCount,
+      integrityOk: placeholderMode, // OK in placeholder mode (nothing to check)
+      missingFiles: [],
+      changedFiles: [],
+      extraFiles: [],
+      notes: placeholderMode
+        ? "Placeholder mode: no lock file and no real asset files. Run 'node scripts/build-runtime-bundle.mjs' after adding assets."
+        : "Lock file missing but asset files exist. Run 'node scripts/build-runtime-bundle.mjs' to generate lock.",
+    };
+  }
+
+  // Build maps
+  const lockFiles = new Map((lock.files || []).map((f) => [f.path, f]));
+  const actualFiles = new Map(assetFiles.map((f) => [f.path, f]));
+
+  const missingFiles = [];
+  const changedFiles = [];
+  const extraFiles = [];
+  let matchCount = 0;
+
+  // Check lock entries against actual files
+  for (const [lockPath, lockEntry] of lockFiles) {
+    const actual = actualFiles.get(lockPath);
+    if (!actual) {
+      missingFiles.push({ path: lockPath, expectedSize: (lockEntry as any).size });
+      continue;
+    }
+    const actualStat = fs.statSync(actual.fullPath);
+    if (actualStat.size !== (lockEntry as any).size) {
+      changedFiles.push({ path: lockPath, expectedSize: (lockEntry as any).size, actualSize: actualStat.size, reason: "size" });
+      continue;
+    }
+    // Verify hash
+    const hash = createHash("sha256");
+    hash.update(fs.readFileSync(actual.fullPath));
+    const actualHash = hash.digest("hex");
+    if (actualHash !== (lockEntry as any).sha256) {
+      changedFiles.push({ path: lockPath, expectedSize: (lockEntry as any).size, actualSize: actualStat.size, reason: "hash" });
+      continue;
+    }
+    matchCount++;
+  }
+
+  // Check for extra files not in lock
+  for (const [actualPath] of actualFiles) {
+    if (!lockFiles.has(actualPath)) {
+      extraFiles.push({ path: actualPath });
+    }
+  }
+
+  const integrityOk = missingFiles.length === 0 && changedFiles.length === 0 && extraFiles.length === 0;
+
+  return {
+    lockFilePresent: true,
+    placeholderMode: false,
+    hasRealFiles: true,
+    fileCountExpected: lock.fileCount,
+    fileCountActual: realFileCount,
+    totalBytesExpected: lock.totalBytes,
+    totalBytesActual: assetFiles.reduce((sum, f) => {
+      try { return sum + fs.statSync(f.fullPath).size; } catch { return sum; }
+    }, 0),
+    matchCount,
+    integrityOk,
+    missingFiles,
+    changedFiles,
+    extraFiles,
+    generatedAt: lock.generatedAt,
+    notes: integrityOk
+      ? `Integrity OK: ${matchCount} files verified.`
+      : `Integrity issues: ${missingFiles.length} missing, ${changedFiles.length} changed, ${extraFiles.length} extra.`,
+  };
+}
+
+// GET /api/runtime/bundle/status — enhanced with integrity
+app.get("/api/runtime/bundle/status", async (_req, res) => {
   try {
     const status = checkRuntimeBundleStatus();
-    res.json(status);
+    const integrity = await checkRuntimeBundleIntegrity();
+    res.json({ ...status, integrity });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/runtime/bundle/integrity — integrity-only endpoint
+app.get("/api/runtime/bundle/integrity", async (_req, res) => {
+  try {
+    const integrity = await checkRuntimeBundleIntegrity();
+    res.json(integrity);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

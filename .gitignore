@@ -8,3 +8,4 @@ coverage/
 !.env.example
 terminai_runtime_state.json
 terminai_telemetry.json
+runtime/runtime-bundle.lock.json

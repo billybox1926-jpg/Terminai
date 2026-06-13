@@ -158,6 +158,37 @@ The native app should:
 3. If no → fall back to host package manager (pkg on Termux, apt-get on Debian)
 4. Never silently install unless `TERMINAI_AUTO_BOOTSTRAP=true`
 
+## Bundle Integrity Pipeline
+
+The runtime bundle lock file (`runtime/runtime-bundle.lock.json`) provides SHA-256 verification:
+
+```bash
+# Generate lock file from current assets
+node scripts/build-runtime-bundle.mjs
+
+# Output: runtime/runtime-bundle.lock.json
+# Contains: file paths, sizes, SHA-256 hashes
+```
+
+### Native App Flow
+
+1. **APK ships runtime payload** in assets
+2. **First launch unpacks** to `TERMINAI_RUNTIME_ROOT`
+3. **Integrity check verifies** all files against lock
+4. **Package bootstrap** only repairs missing/changed files
+5. **API bridge** remains internal to one app
+
+### Integrity Status
+
+| Status | Meaning |
+| --- | --- |
+| `OK` | All files verified against lock |
+| `PLACEHOLDER` | No lock file, no real files (expected before binaries added) |
+| `FAILED` | Lock file present but files missing/changed |
+| `NO LOCK` | Real files exist but lock file missing |
+
+See `runtime/runtime-bundle.lock.example.json` for the expected lock structure.
+
 ## What TerminAI Does NOT Do
 
 - Does NOT create separate companion apps

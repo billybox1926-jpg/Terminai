@@ -11,6 +11,7 @@
     "clean": "rm -rf dist server.js",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run build",
+    "runtime:bundle": "node scripts/build-runtime-bundle.mjs",
     "runtime:status": "node scripts/runtime-status.mjs",
     "lint": "npm run typecheck"
   },

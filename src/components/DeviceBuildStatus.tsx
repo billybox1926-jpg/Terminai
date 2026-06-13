@@ -975,6 +975,41 @@ export const DeviceBuildStatus: React.FC<DeviceBuildStatusProps> = ({ onSendComm
                     </div>
                   </div>
                 </div>
+                {runtimeStatus.bundle.integrity && (
+                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1">
+                    <div className="flex items-center justify-between text-[8px]">
+                      <span className="text-white/30">Integrity</span>
+                      <span className={`font-bold ${
+                        runtimeStatus.bundle.integrity.integrityOk ? "text-emerald-400" :
+                        runtimeStatus.bundle.integrity.placeholderMode ? "text-blue-400" :
+                        "text-rose-400"
+                      }`}>
+                        {runtimeStatus.bundle.integrity.placeholderMode ? "PLACEHOLDER" :
+                         runtimeStatus.bundle.integrity.integrityOk ? "OK" :
+                         runtimeStatus.bundle.integrity.lockFilePresent ? "FAILED" : "NO LOCK"}
+                      </span>
+                    </div>
+                    {runtimeStatus.bundle.integrity.lockFilePresent && (
+                      <div className="flex items-center justify-between text-[8px] text-white/25">
+                        <span>Files: {runtimeStatus.bundle.integrity.fileCountActual}/{runtimeStatus.bundle.integrity.fileCountExpected}</span>
+                        <span>{runtimeStatus.bundle.integrity.matchCount} verified</span>
+                      </div>
+                    )}
+                    {!runtimeStatus.bundle.integrity.placeholderMode && !runtimeStatus.bundle.integrity.integrityOk && (
+                      <div className="text-[8px] text-white/25 space-y-0.5">
+                        {runtimeStatus.bundle.integrity.missingFiles?.length > 0 && (
+                          <span className="text-rose-400/70">{runtimeStatus.bundle.integrity.missingFiles.length} missing</span>
+                        )}
+                        {runtimeStatus.bundle.integrity.changedFiles?.length > 0 && (
+                          <span className="text-amber-400/70">{runtimeStatus.bundle.integrity.changedFiles.length} changed</span>
+                        )}
+                        {runtimeStatus.bundle.integrity.extraFiles?.length > 0 && (
+                          <span className="text-blue-400/70">{runtimeStatus.bundle.integrity.extraFiles.length} extra</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="text-[8px] text-white/25 leading-snug">
                   {runtimeStatus.bundle.notes}
                 </div>
