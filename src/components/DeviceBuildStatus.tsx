@@ -92,6 +92,7 @@ export const DeviceBuildStatus: React.FC<DeviceBuildStatusProps> = ({ onSendComm
     fetchStatus();
     fetchBootstrapStatus();
     fetchApiStatus();
+    fetchUnifiedRuntimeStatus();
   };
 
   const fetchBootstrapStatus = async () => {
@@ -106,8 +107,9 @@ export const DeviceBuildStatus: React.FC<DeviceBuildStatusProps> = ({ onSendComm
     }
   };
 
-  const [apiStatus, setApiStatus] = useState<any>(null);
+  const [runtimeStatus, setRuntimeStatus] = useState<any>(null);
   const [apiLoading, setApiLoading] = useState<boolean>(true);
+  const [apiStatus, setApiStatus] = useState<any>(null);
 
   const fetchApiStatus = async () => {
     setApiLoading(true);
@@ -124,10 +126,26 @@ export const DeviceBuildStatus: React.FC<DeviceBuildStatusProps> = ({ onSendComm
     }
   };
 
+  const fetchUnifiedRuntimeStatus = async () => {
+    try {
+      const res = await fetch("/api/runtime/status");
+      if (res.ok) {
+        const data = await res.json();
+        setRuntimeStatus(data);
+        // Also update the separate states for backward compatibility
+        setBootstrapStatus(data.packages);
+        setApiStatus(data.api);
+      }
+    } catch (e) {
+      console.error("Failed to fetch unified runtime status:", e);
+    }
+  };
+
   useEffect(() => {
     fetchStatus();
     fetchBootstrapStatus();
     fetchApiStatus();
+    fetchUnifiedRuntimeStatus();
   }, []);
 
   const handleSaveTelemetry = async () => {
@@ -819,17 +837,114 @@ export const DeviceBuildStatus: React.FC<DeviceBuildStatusProps> = ({ onSendComm
             </h3>
           </div>
           <button
-            onClick={() => { fetchApiStatus(); }}
+            onClick={() => { fetchUnifiedRuntimeStatus(); }}
             className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold font-sans cursor-pointer"
           >
             Refresh
           </button>
         </div>
 
-        {apiLoading ? (
+        {apiLoading && !runtimeStatus ? (
           <div className="flex items-center justify-center py-8 text-xs text-white/40">
             <RefreshCw className="w-4 h-4 mr-2 animate-spin text-emerald-400" />
             Checking runtime modules...
+          </div>
+        ) : runtimeStatus?.state ? (
+          <div className="space-y-4">
+            {/* One-app readiness score */}
+            <div className={`rounded-lg p-3 border ${
+              runtimeStatus.state.runtimeReady && runtimeStatus.api?.oneAppReady
+                ? "bg-emerald-950/20 border-emerald-900/40"
+                : "bg-amber-950/20 border-amber-900/40"
+            }`}>
+              <div className="flex items-center justify-between mb-1">
+                <span className={`text-[10px] font-sans font-semibold flex items-center gap-1.5 ${
+                  runtimeStatus.state.runtimeReady ? "text-emerald-300" : "text-amber-300"
+                }`}>
+                  {runtimeStatus.state.runtimeReady && runtimeStatus.api?.oneAppReady
+                    ? <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    : <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                  }
+                  {runtimeStatus.state.runtimeReady && runtimeStatus.api?.oneAppReady
+                    ? "One-App Ready"
+                    : runtimeStatus.state.runtimeReady
+                      ? "Packages Ready — APIs Partial"
+                      : "Needs Provisioning"}
+                </span>
+                <span className="text-[9px] text-white/30">
+                  First run: {runtimeStatus.state.firstRunCompleted ? "complete" : "pending"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-[9px] text-white/40">
+                <span>Mode: {runtimeStatus.state.bootstrapMode}</span>
+                <span>Pkg: {runtimeStatus.state.detectedPackageManager}</span>
+              </div>
+            </div>
+
+            {/* Readiness score cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-[#101012] border border-white/5 p-3 rounded-lg text-center">
+                <div className="text-[9px] text-white/30 uppercase font-bold mb-1">Package Runtime</div>
+                <div className={`text-xs font-extrabold ${runtimeStatus.state.runtimeReady ? "text-emerald-400" : "text-amber-400"}`}>
+                  {runtimeStatus.state.runtimeReady ? "READY" : "INCOMPLETE"}
+                </div>
+                <div className="text-[9px] text-white/30 mt-0.5">
+                  {runtimeStatus.state.installedCount}/{runtimeStatus.packages?.total ?? 0} installed
+                </div>
+              </div>
+              <div className="bg-[#101012] border border-white/5 p-3 rounded-lg text-center">
+                <div className="text-[9px] text-white/30 uppercase font-bold mb-1">API Bridge</div>
+                <div className={`text-xs font-extrabold ${runtimeStatus.api?.oneAppReady ? "text-emerald-400" : "text-amber-400"}`}>
+                  {runtimeStatus.api?.oneAppReady ? "READY" : "PARTIAL"}
+                </div>
+                <div className="text-[9px] text-white/30 mt-0.5">
+                  {runtimeStatus.api?.ready ?? 0}/{runtimeStatus.api?.total ?? 0} available
+                </div>
+              </div>
+              <div className="bg-[#101012] border border-white/5 p-3 rounded-lg text-center">
+                <div className="text-[9px] text-white/30 uppercase font-bold mb-1">Simulated</div>
+                <div className="text-xs font-extrabold text-blue-400">
+                  {runtimeStatus.state.apiSimulatedCount ?? 0}
+                </div>
+                <div className="text-[9px] text-white/30 mt-0.5">APIs in simulation mode</div>
+              </div>
+              <div className="bg-[#101012] border border-white/5 p-3 rounded-lg text-center">
+                <div className="text-[9px] text-white/30 uppercase font-bold mb-1">Native Required</div>
+                <div className="text-xs font-extrabold text-amber-400">
+                  {runtimeStatus.state.apiUnavailableCount ?? 0}
+                </div>
+                <div className="text-[9px] text-white/30 mt-0.5">Need Android runtime</div>
+              </div>
+            </div>
+
+            {/* Missing packages list */}
+            {runtimeStatus.state.missingCount > 0 && (
+              <div className="space-y-1.5">
+                <span className="text-[9px] text-amber-400/80 uppercase font-bold tracking-wider">
+                  Missing Packages ({runtimeStatus.state.requiredMissingCount} required)
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {runtimeStatus.packages?.items?.filter((p: any) => !p.installed).map((p: any) => (
+                    <span key={p.id} className={`text-[8px] px-1.5 py-0.5 rounded border ${
+                      p.required ? "bg-amber-950/30 text-amber-400 border-amber-900/40" : "bg-white/5 text-white/40 border-white/10"
+                    }`}>
+                      {p.id}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Timing info */}
+            <div className="text-[9px] text-white/20 leading-snug pt-2 border-t border-white/5 flex justify-between">
+              <span>Last check: {runtimeStatus.state.lastBootstrapCheck ? new Date(runtimeStatus.state.lastBootstrapCheck).toLocaleString() : "never"}</span>
+              <span>Last install: {runtimeStatus.state.lastBootstrapInstall ? new Date(runtimeStatus.state.lastBootstrapInstall).toLocaleString() : "never"}</span>
+            </div>
+
+            <div className="text-[9px] text-white/20 leading-snug pt-2 border-t border-white/5">
+              TerminAI is one app — package layer, API bridge, file tools, scripts, and AI optimizer in one dashboard.
+              Simulated APIs run in the web prototype. Native Android runtime required for full hardware access.
+            </div>
           </div>
         ) : apiStatus ? (
           <div className="space-y-4">

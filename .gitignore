@@ -6,3 +6,5 @@ coverage/
 *.log
 .env*
 !.env.example
+terminai_runtime_state.json
+terminai_telemetry.json

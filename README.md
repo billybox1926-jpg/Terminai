@@ -100,18 +100,30 @@ GEMINI_MODEL=gemini-2.5-flash
 ```
 
 If both provider keys are present, TerminAI uses OpenRouter first.
+## Runtime Bootstrap API
+
+| Endpoint | Method | Purpose |
+| --- | --- | --- |
+| `/api/runtime/status` | GET | Unified readiness (packages + API + device + state) |
+| `/api/runtime/bootstrap/status` | GET | Package readiness from manifest |
+| `/api/runtime/bootstrap/install` | POST | Install missing baseline packages |
+| `/api/runtime/bootstrap/repair` | POST | Repair all missing packages |
+| `/api/runtime/api/status` | GET | API bridge capability status |
+| `/api/runtime/first-run/complete` | POST | Mark first-run provisioning complete |
 
 ## Environment variables
+
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| PORT | No | Server port. Defaults to 3000. |
-| TERMINAI_WORKSPACE_ROOT | No | Root directory exposed to the terminal/file APIs. Defaults to the repo working directory. |
-| TERMINAI_COMMAND_TIMEOUT_MS | No | Command execution timeout. Defaults to 30000. |
-| TERMINAI_COMMAND_MAX_BUFFER | No | Max command output buffer. Defaults to 1048576. |
-| OPENROUTER_API_KEY | Only for AI optimizer | Enables OpenRouter-backed command optimization. |
-| OPENROUTER_MODEL | No | OpenRouter model name. Defaults to google/gemini-2.5-flash. |
-| GEMINI_API_KEY | Only for AI optimizer fallback | Enables direct Gemini-backed command optimization. |
-| GEMINI_MODEL | No | Gemini model name. Defaults to gemini-2.5-flash. |
+| `PORT` | No | Server port. Defaults to `3000`. |
+| `TERMINAI_WORKSPACE_ROOT` | No | Root directory exposed to the terminal/file APIs. Defaults to the repo working directory. |
+| `TERMINAI_COMMAND_TIMEOUT_MS` | No | Command execution timeout. Defaults to `30000`. |
+| `TERMINAI_COMMAND_MAX_BUFFER` | No | Max command output buffer. Defaults to `1048576`. |
+| `TERMINAI_AUTO_BOOTSTRAP` | No | Auto-install missing baseline packages on startup. Defaults to `false`. |
+| `OPENROUTER_API_KEY` | Only for AI optimizer | Enables OpenRouter-backed command optimization. |
+| `OPENROUTER_MODEL` | No | OpenRouter model name. Defaults to `google/gemini-2.5-flash`. |
+| `GEMINI_API_KEY` | Only for AI optimizer fallback | Enables direct Gemini-backed command optimization. |
+| `GEMINI_MODEL` | No | Gemini model name. Defaults to `gemini-2.5-flash`. |
 
 ## Scripts
 * `npm run dev`        # Start the local development server
@@ -123,26 +135,30 @@ If both provider keys are present, TerminAI uses OpenRouter first.
 ## Project layout
 ```text
 .
-├── docs/                      # Architecture notes and migration plans
-├── runtime/                   # Runtime manifests
-│   └── package-baseline.json  # Source of truth for the locked-and-loaded package layer
-├── src/                       # React UI
-│   ├── components/            # Terminal, file browser, monitor, editor, scripts
-│   ├── App.tsx                # Main workspace shell
-│   └── types.ts               # Shared frontend types
-├── server.ts                  # Express API + Vite integration
-├── index.html                 # App shell
-├── package.json               # Node scripts and dependencies
-└── .env.example               # Local configuration template
+├── docs/                           # Architecture notes and migration plans
+│   ├── unified-runtime.md          # Runtime architecture and bootstrap API
+│   └── native-runtime-bootstrap.md # Native Android locked-and-loaded direction
+├── runtime/                        # Runtime manifests and state
+│   ├── package-baseline.json       # Source of truth for the locked-and-loaded package layer
+│   ├── api-baseline.json           # Source of truth for the API bridge layer
+│   └── runtime-state.example.json  # Example runtime state file
+├── src/                            # React UI
+│   ├── components/                 # Terminal, file browser, monitor, editor, scripts
+│   ├── App.tsx                     # Main workspace shell
+│   └── types.ts                    # Shared frontend types
+├── server.ts                       # Express API + Vite integration
+├── index.html                      # App shell
+├── package.json                    # Node scripts and dependencies
+└── .env.example                    # Local configuration template
 ```
 
 ## Direction
 The next serious milestones are:
 1. Keep the dashboard identity fully TerminAI end-to-end.
 2. Keep CI green for type-checking and production builds.
-3. Define an artifact telemetry format for Android/APK workflows.
-4. Add a device/build status panel.
-5. Turn the package/API layer into first-class TerminAI runtime modules.
+3. Build native Android runtime (see `docs/native-runtime-bootstrap.md`).
+4. Connect the Device & Build panel to real Android/APK status.
+5. Implement remaining API bridge modules (battery, clipboard, notifications).
 
 ## License
 No license has been selected yet.

@@ -1,0 +1,14 @@
+{
+  "firstRunCompleted": false,
+  "lastBootstrapCheck": null,
+  "lastBootstrapInstall": null,
+  "detectedPackageManager": "unknown",
+  "runtimeReady": false,
+  "installedCount": 0,
+  "missingCount": 0,
+  "requiredMissingCount": 0,
+  "apiReadyCount": 0,
+  "apiSimulatedCount": 0,
+  "apiUnavailableCount": 0,
+  "bootstrapMode": "prompt-user"
+}

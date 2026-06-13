@@ -745,6 +745,214 @@ app.get("/api/runtime/api/status", (_req, res) => {
   }
 });
 
+// -------------------------------------------------------
+// RUNTIME STATE — first-run provisioning & startup check
+// -------------------------------------------------------
+
+const RUNTIME_STATE_PATH = path.resolve(
+  process.env.TERMINAI_WORKSPACE_ROOT || process.cwd(),
+  "terminai_runtime_state.json"
+);
+
+const RUNTIME_STATE_EXAMPLE_PATH = path.resolve(__dirname, "runtime", "runtime-state.example.json");
+
+type BootstrapMode = "check-only" | "prompt-user" | "auto-install-enabled" | "native-bundled";
+
+interface RuntimeState {
+  firstRunCompleted: boolean;
+  lastBootstrapCheck: string | null;
+  lastBootstrapInstall: string | null;
+  detectedPackageManager: string;
+  runtimeReady: boolean;
+  installedCount: number;
+  missingCount: number;
+  requiredMissingCount: number;
+  apiReadyCount: number;
+  apiSimulatedCount: number;
+  apiUnavailableCount: number;
+  bootstrapMode: BootstrapMode;
+}
+
+function getDefaultRuntimeState(): RuntimeState {
+  return {
+    firstRunCompleted: false,
+    lastBootstrapCheck: null,
+    lastBootstrapInstall: null,
+    detectedPackageManager: "unknown",
+    runtimeReady: false,
+    installedCount: 0,
+    missingCount: 0,
+    requiredMissingCount: 0,
+    apiReadyCount: 0,
+    apiSimulatedCount: 0,
+    apiUnavailableCount: 0,
+    bootstrapMode: "prompt-user",
+  };
+}
+
+function readRuntimeState(): RuntimeState {
+  try {
+    if (fs.existsSync(RUNTIME_STATE_PATH)) {
+      const raw = fs.readFileSync(RUNTIME_STATE_PATH, "utf-8");
+      return { ...getDefaultRuntimeState(), ...JSON.parse(raw) };
+    }
+  } catch (e) {
+    console.error("Failed to read runtime state:", e);
+  }
+  return getDefaultRuntimeState();
+}
+
+function writeRuntimeState(state: RuntimeState): void {
+  try {
+    fs.writeFileSync(RUNTIME_STATE_PATH, JSON.stringify(state, null, 2), "utf-8");
+  } catch (e) {
+    console.error("Failed to write runtime state:", e);
+  }
+}
+
+async function runStartupCheck(): Promise<RuntimeState> {
+  console.log("[Runtime] Running startup check...");
+
+  const baselines = readPackageBaseline();
+  const packages = await checkPackageStatus(baselines);
+  const missing = packages.filter((p: any) => !p.installed);
+  const requiredMissing = packages.filter((p: any) => !p.installed && p.required !== false);
+  const installed = packages.filter((p: any) => p.installed);
+  const manager = detectPackageManager();
+
+  const apiCaps = readApiBaseline();
+  const apiReady = apiCaps.filter((c: any) => c.status === "available").length;
+  const apiSimulated = apiCaps.filter((c: any) => c.status === "simulated").length;
+  const apiUnavailable = apiCaps.filter((c: any) => c.status === "unavailable").length;
+
+  const autoBootstrap = process.env.TERMINAI_AUTO_BOOTSTRAP === "true";
+  const bootstrapMode: BootstrapMode = autoBootstrap ? "auto-install-enabled" : "prompt-user";
+
+  let state: RuntimeState = {
+    firstRunCompleted: false,
+    lastBootstrapCheck: new Date().toISOString(),
+    lastBootstrapInstall: null,
+    detectedPackageManager: manager,
+    runtimeReady: requiredMissing.length === 0,
+    installedCount: installed.length,
+    missingCount: missing.length,
+    requiredMissingCount: requiredMissing.length,
+    apiReadyCount: apiReady,
+    apiSimulatedCount: apiSimulated,
+    apiUnavailableCount: apiUnavailable,
+    bootstrapMode,
+  };
+
+  // Auto-bootstrap if enabled
+  if (autoBootstrap && missing.length > 0) {
+    console.log(`[Runtime] TERMINAI_AUTO_BOOTSTRAP=true, installing ${missing.length} missing packages...`);
+    try {
+      const { command, sanitized } = await installMissingPackages(baselines, missing, manager);
+      console.log(`[Runtime] Auto-bootstrap command: ${command}`);
+      // Execute the install command
+      const { exec } = await import("child_process");
+      exec(command, (err: any, stdout: string, stderr: string) => {
+        if (err) {
+          console.error(`[Runtime] Auto-bootstrap failed: ${err.message}`);
+          if (stderr) console.error(`[Runtime] stderr: ${stderr}`);
+        } else {
+          console.log(`[Runtime] Auto-bootstrap completed for: ${sanitized.join(" ")}`);
+          if (stdout) console.log(`[Runtime] stdout: ${stdout.substring(0, 500)}`);
+        }
+        // Re-check status after install
+        checkPackageStatus(baselines).then((updatedPackages: any[]) => {
+          const stillMissing = updatedPackages.filter((p: any) => !p.installed && p.required !== false);
+          state.runtimeReady = stillMissing.length === 0;
+          state.installedCount = updatedPackages.filter((p: any) => p.installed).length;
+          state.missingCount = updatedPackages.filter((p: any) => !p.installed).length;
+          state.requiredMissingCount = stillMissing.length;
+          state.lastBootstrapInstall = new Date().toISOString();
+          writeRuntimeState(state);
+        }).catch((e: any) => {
+          console.error("[Runtime] Post-bootstrap status check failed:", e);
+        });
+      });
+    } catch (e: any) {
+      console.error(`[Runtime] Auto-bootstrap error: ${e.message}`);
+    }
+  }
+
+  writeRuntimeState(state);
+  console.log(`[Runtime] Startup check complete. Runtime ready: ${state.runtimeReady}, Packages: ${state.installedCount}/${baselines.length}, Mode: ${bootstrapMode}`);
+  return state;
+}
+
+// GET /api/runtime/status — unified readiness for the whole app
+app.get("/api/runtime/status", async (_req, res) => {
+  try {
+    const state = readRuntimeState();
+    const baselines = readPackageBaseline();
+    const packages = await checkPackageStatus(baselines);
+    const missing = packages.filter((p: any) => !p.installed);
+    const requiredMissing = packages.filter((p: any) => !p.installed && p.required !== false);
+    const installed = packages.filter((p: any) => p.installed);
+
+    const apiCaps = readApiBaseline();
+    const apiReady = apiCaps.filter((c: any) => c.status === "available").length;
+    const apiSimulated = apiCaps.filter((c: any) => c.status === "simulated").length;
+    const apiUnavailable = apiCaps.filter((c: any) => c.status === "unavailable").length;
+
+    // Refresh state with latest check
+    const freshState: RuntimeState = {
+      ...state,
+      lastBootstrapCheck: new Date().toISOString(),
+      detectedPackageManager: detectPackageManager(),
+      runtimeReady: requiredMissing.length === 0,
+      installedCount: installed.length,
+      missingCount: missing.length,
+      requiredMissingCount: requiredMissing.length,
+      apiReadyCount: apiReady,
+      apiSimulatedCount: apiSimulated,
+      apiUnavailableCount: apiUnavailable,
+    };
+    writeRuntimeState(freshState);
+
+    res.json({
+      state: freshState,
+      packages: {
+        total: baselines.length,
+        installed: installed.length,
+        missing: missing.length,
+        requiredMissing: requiredMissing.length,
+        runtimeReady: requiredMissing.length === 0,
+        items: packages,
+      },
+      api: {
+        total: apiCaps.length,
+        ready: apiReady,
+        simulated: apiSimulated,
+        unavailable: apiUnavailable,
+        oneAppReady: apiUnavailable === 0,
+        capabilities: apiCaps,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/runtime/first-run/complete
+app.post("/api/runtime/first-run/complete", (req, res) => {
+  try {
+    const { bootstrapMode } = req.body as { bootstrapMode?: BootstrapMode };
+    const state = readRuntimeState();
+    state.firstRunCompleted = true;
+    state.lastBootstrapCheck = new Date().toISOString();
+    if (bootstrapMode) {
+      state.bootstrapMode = bootstrapMode;
+    }
+    writeRuntimeState(state);
+    res.json({ success: true, message: "First run marked complete.", state });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Device & Build Status API layer (TerminAI runtime modules)
 let deviceClipboard = "TerminAI: Seamless local pipeline active.";
 let deviceSettings = {
@@ -996,6 +1204,11 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Terminai Graphical Shell Backend actively listening on port ${PORT}`);
+  });
+
+  // Run startup check after server is listening (non-blocking)
+  runStartupCheck().catch((e: any) => {
+    console.error("[Runtime] Startup check failed:", e);
   });
 }
 

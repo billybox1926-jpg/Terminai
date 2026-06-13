@@ -67,10 +67,46 @@ The web prototype marks most hardware APIs as `simulated` or `unavailable`. Only
 
 | Endpoint | Method | Purpose |
 | --- | --- | --- |
-| `/api/runtime/bootstrap/status` | GET | Full package readiness from manifest |
+| `/api/runtime/status` | GET | Unified readiness (packages + API + device + state) |
+| `/api/runtime/bootstrap/status` | GET | Package readiness from manifest |
 | `/api/runtime/bootstrap/install` | POST | Install missing baseline packages |
 | `/api/runtime/bootstrap/repair` | POST | Repair all missing packages |
 | `/api/runtime/api/status` | GET | API bridge capability status |
+| `/api/runtime/first-run/complete` | POST | Mark first-run provisioning complete |
+
+## First-Run Provisioning
+
+When TerminAI starts, it runs a non-blocking startup check:
+
+1. Reads `runtime/package-baseline.json`
+2. Detects package manager (apt vs pkg)
+3. Checks each package via `which` + `--version`
+4. Writes `terminai_runtime_state.json` with current status
+5. If `TERMINAI_AUTO_BOOTSTRAP=true`, installs missing `installByDefault` packages
+6. After install, re-checks status and updates state
+
+The runtime state file (`terminai_runtime_state.json`) tracks:
+- `firstRunCompleted` — whether the user has completed first-run provisioning
+- `lastBootstrapCheck` — timestamp of last package check
+- `lastBootstrapInstall` — timestamp of last install attempt
+- `detectedPackageManager` — apt, pkg, or unknown
+- `runtimeReady` — whether all required packages are installed
+- `installedCount` / `missingCount` / `requiredMissingCount`
+- `apiReadyCount` / `apiSimulatedCount` / `apiUnavailableCount`
+- `bootstrapMode` — check-only, prompt-user, auto-install-enabled, or native-bundled
+
+### Bootstrap Modes
+
+| Mode | Behavior |
+| --- | --- |
+| `check-only` | Detect packages, show status, never install |
+| `prompt-user` | Detect packages, show status, UI offers install buttons |
+| `auto-install-enabled` | Detect packages, auto-install missing `installByDefault` packages on startup |
+| `native-bundled` | Native app ships with runtime pre-provisioned |
+
+### Environment Variables
+
+- `TERMINAI_AUTO_BOOTSTRAP=false` — Set to `true` to enable automatic package installation on startup. Default is `false` (safe mode: check only, prompt user).
 
 ## Guardrails
 
@@ -79,3 +115,12 @@ The web prototype marks most hardware APIs as `simulated` or `unavailable`. Only
 - Device/build simulation must be labeled as simulation until backed by a real native build worker.
 - Destructive shell operations must remain user-visible.
 - Public network exposure requires auth before it is supported.
+
+## Native Android Direction
+
+See [`docs/native-runtime-bootstrap.md`](./native-runtime-bootstrap.md) for the full plan to ship TerminAI as a locked-and-loaded native Android app with:
+- One package ID, one app identity
+- Internal API bridge module (not separate Termux:API app)
+- Bootstrap packages provisioned on first launch
+- Package and API manifests as source of truth
+- Native layer prebundling or unpacking runtime assets

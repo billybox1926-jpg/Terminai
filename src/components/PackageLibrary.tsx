@@ -17,6 +17,8 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
   const [bootstrapStatus, setBootstrapStatus] = useState<RuntimeBootstrapStatus | null>(null);
   const [bootstrapping, setBootstrapping] = useState<boolean>(false);
   const [repairing, setRepairing] = useState<boolean>(false);
+  const [runtimeStatus, setRuntimeStatus] = useState<any>(null);
+  const [markingComplete, setMarkingComplete] = useState<boolean>(false);
 
   const fetchPackages = async () => {
     setLoading(true);
@@ -46,9 +48,41 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
     }
   };
 
+  const fetchRuntimeStatus = async () => {
+    try {
+      const response = await fetch("/api/runtime/status");
+      const data = await response.json();
+      setRuntimeStatus(data);
+    } catch (err) {
+      console.error("Error loading runtime status", err);
+    }
+  };
+
+  const handleMarkFirstRunComplete = async () => {
+    setMarkingComplete(true);
+    try {
+      const mode = bootstrapStatus?.packageManager === "pkg" ? "auto-install-enabled" : "prompt-user";
+      const response = await fetch("/api/runtime/first-run/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bootstrapMode: mode }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        await fetchRuntimeStatus();
+        await fetchBootstrapStatus();
+      }
+    } catch (err) {
+      console.error("Failed to mark first run complete:", err);
+    } finally {
+      setMarkingComplete(false);
+    }
+  };
+
   useEffect(() => {
     fetchPackages();
     fetchBootstrapStatus();
+    fetchRuntimeStatus();
   }, []);
 
   const filteredTools = tools.filter(tool =>
@@ -154,7 +188,7 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
           <h2 className="text-xs font-semibold text-white/90 uppercase tracking-wider font-display">Graphical Tools & Package Monitor</h2>
         </div>
         <button
-          onClick={() => { fetchPackages(); fetchBootstrapStatus(); }}
+          onClick={() => { fetchPackages(); fetchBootstrapStatus(); fetchRuntimeStatus(); }}
           className="text-[10px] text-emerald-400 hover:text-emerald-300 decoration-emerald-550 hover:underline cursor-pointer font-bold font-sans"
         >
           Check status
@@ -166,7 +200,7 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
       </p>
 
       {/* Runtime Readiness Summary */}
-      {!loading && (readiness || bootstrapStatus) && (
+      {!loading && (readiness || bootstrapStatus || runtimeStatus) && (
         <div className={`rounded-lg p-3 mb-3 border ${
           isReady
             ? "bg-emerald-950/20 border-emerald-900/40"
@@ -180,7 +214,7 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
                 ? <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                 : <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
               }
-              {isReady ? "Runtime Ready" : "Runtime Incomplete"}
+              {isReady ? "Runtime Ready" : "Needs Bootstrap"}
             </span>
             <span className={`text-[9px] font-bold px-2 py-0.5 rounded border ${
               isReady
@@ -196,7 +230,25 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
               <span className="text-amber-400">{totalMissing} missing ({requiredMissing} required)</span>
             )}
           </div>
+          {runtimeStatus?.state && (
+            <div className="mt-1.5 pt-1.5 border-t border-white/5 flex items-center justify-between text-[9px] text-white/30">
+              <span>Mode: {runtimeStatus.state.bootstrapMode}</span>
+              <span>First run: {runtimeStatus.state.firstRunCompleted ? "complete" : "pending"}</span>
+            </div>
+          )}
         </div>
+      )}
+
+      {/* First Run Complete button */}
+      {!loading && runtimeStatus?.state && !runtimeStatus.state.firstRunCompleted && (
+        <button
+          onClick={handleMarkFirstRunComplete}
+          disabled={markingComplete}
+          className="w-full flex items-center justify-center gap-1.5 text-[10px] py-1.5 px-3 rounded-lg font-bold transition border cursor-pointer mb-3 bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white disabled:opacity-40"
+        >
+          {markingComplete ? <RefreshCw className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+          {markingComplete ? "Marking..." : "Mark First Run Complete"}
+        </button>
       )}
 
       {/* Bootstrap / Repair buttons */}

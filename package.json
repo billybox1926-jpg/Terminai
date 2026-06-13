@@ -10,6 +10,7 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run build",
     "lint": "npm run typecheck"
   },
   "dependencies": {
