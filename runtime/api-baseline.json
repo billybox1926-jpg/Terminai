@@ -1,0 +1,141 @@
+{
+  "schema": "terminai-api-baseline/v1",
+  "description": "API capabilities TerminAI exposes as internal modules in one app. Not separate companion apps.",
+  "capabilities": [
+    {
+      "id": "battery",
+      "displayName": "Battery Status",
+      "category": "Device",
+      "description": "Read battery level, charging state, and temperature",
+      "permission": "None",
+      "status": "simulated",
+      "nativeRequired": true
+    },
+    {
+      "id": "clipboard",
+      "displayName": "Clipboard",
+      "category": "Device",
+      "description": "Read and write clipboard contents",
+      "permission": "None",
+      "status": "simulated",
+      "nativeRequired": true
+    },
+    {
+      "id": "notifications",
+      "displayName": "Notifications",
+      "category": "Device",
+      "description": "Send and cancel Android notifications",
+      "permission": "Notification",
+      "status": "simulated",
+      "nativeRequired": true
+    },
+    {
+      "id": "storage",
+      "displayName": "Storage Access",
+      "category": "File System",
+      "description": "Scoped file browser and editor within workspace",
+      "permission": "Storage",
+      "status": "available",
+      "nativeRequired": false
+    },
+    {
+      "id": "intent-open-url",
+      "displayName": "Open URL Intent",
+      "category": "Intent",
+      "description": "Open URLs in external browser via Android intent",
+      "permission": "None",
+      "status": "simulated",
+      "nativeRequired": true
+    },
+    {
+      "id": "intent-send",
+      "displayName": "Send Intent",
+      "category": "Intent",
+      "description": "Send data to other apps via Android intent",
+      "permission": "None",
+      "status": "simulated",
+      "nativeRequired": true
+    },
+    {
+      "id": "vibration",
+      "displayName": "Vibration / Haptics",
+      "category": "Device",
+      "description": "Trigger device vibration patterns",
+      "permission": "Vibrate",
+      "status": "simulated",
+      "nativeRequired": true
+    },
+    {
+      "id": "sensors",
+      "displayName": "Sensors",
+      "category": "Device",
+      "description": "Accelerometer, gyroscope, light, proximity sensors",
+      "permission": "Sensors",
+      "status": "unavailable",
+      "nativeRequired": true
+    },
+    {
+      "id": "network-info",
+      "displayName": "Network Info",
+      "category": "Network",
+      "description": "WiFi SSID, IP address, connection type, signal strength",
+      "permission": "Network",
+      "status": "simulated",
+      "nativeRequired": true
+    },
+    {
+      "id": "camera",
+      "displayName": "Camera",
+      "category": "Media",
+      "description": "Capture photos and video from device camera",
+      "permission": "Camera",
+      "status": "unavailable",
+      "nativeRequired": true
+    },
+    {
+      "id": "microphone",
+      "displayName": "Microphone",
+      "category": "Media",
+      "description": "Record audio from device microphone",
+      "permission": "Microphone",
+      "status": "unavailable",
+      "nativeRequired": true
+    },
+    {
+      "id": "location",
+      "displayName": "Location / GPS",
+      "category": "Location",
+      "description": "Device GPS coordinates and location services",
+      "permission": "Location",
+      "status": "unavailable",
+      "nativeRequired": true
+    },
+    {
+      "id": "file-picker",
+      "displayName": "File Picker",
+      "category": "File System",
+      "description": "System file picker for opening/saving files outside workspace",
+      "permission": "Storage",
+      "status": "unavailable",
+      "nativeRequired": true
+    },
+    {
+      "id": "boot-startup",
+      "displayName": "Boot Startup",
+      "category": "Automation",
+      "description": "Run scripts or services on device boot",
+      "permission": "Boot",
+      "status": "unavailable",
+      "nativeRequired": true
+    },
+    {
+      "id": "script-shortcuts",
+      "displayName": "Script Shortcuts",
+      "category": "Automation",
+      "description": "Quick-launch scripts from home screen or dashboard",
+      "permission": "None",
+      "status": "available",
+      "nativeRequired": false
+    }
+  ]
+}

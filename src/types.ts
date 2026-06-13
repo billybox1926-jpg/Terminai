@@ -33,16 +33,18 @@ export interface FileItem {
 }
 
 export interface CLITool {
-  id?: string;
+  id: string;
   name: string;
   displayName?: string;
   aptPackages?: string;
+  termuxPackages?: string;
   queryCommand?: string;
   description: string;
   category: string;
   installed: boolean;
   version: string | null;
   required?: boolean;
+  installByDefault?: boolean;
 }
 
 export interface TerminalLine {
@@ -84,6 +86,48 @@ export interface PackageReadiness {
 export interface PackageListResponse {
   tools: CLITool[];
   readiness: PackageReadiness;
+}
+
+export interface RuntimeBootstrapStatus {
+  packageManager: string;
+  total: number;
+  installed: number;
+  missing: number;
+  requiredMissing: number;
+  runtimeReady: boolean;
+  packages: CLITool[];
+}
+
+export interface RuntimeBootstrapResult {
+  command: string | null;
+  message: string;
+  packageManager?: string;
+  missingCount?: number;
+  packages?: string[];
+  installed?: boolean;
+  healthy?: boolean;
+}
+
+export interface ApiCapability {
+  id: string;
+  displayName: string;
+  category: string;
+  description: string;
+  permission: string;
+  status: "simulated" | "available" | "unavailable";
+  nativeRequired: boolean;
+}
+
+export interface ApiStatusResponse {
+  capabilities: ApiCapability[];
+  summary: {
+    total: number;
+    simulated: number;
+    available: number;
+    unavailable: number;
+    nativeRequired: number;
+    oneAppReady: boolean;
+  };
 }
 
 export interface DeviceInfo {

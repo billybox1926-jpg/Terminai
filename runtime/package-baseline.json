@@ -3,171 +3,209 @@
     "id": "git",
     "displayName": "Git",
     "aptPackages": "git",
+    "termuxPackages": "git",
     "queryCommand": "git",
     "category": "Version Control",
     "description": "Distributed version control system",
-    "required": true
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "curl",
-    "displayName": "Curl",
+    "displayName": "curl",
     "aptPackages": "curl",
+    "termuxPackages": "curl",
     "queryCommand": "curl",
     "category": "Network",
     "description": "Command line tool for transferring data via URL",
-    "required": true
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "wget",
-    "displayName": "Wget",
+    "displayName": "wget",
     "aptPackages": "wget",
+    "termuxPackages": "wget",
     "queryCommand": "wget",
     "category": "Network",
     "description": "Non-interactive network downloader",
-    "required": true
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "jq",
-    "displayName": "JQ",
+    "displayName": "jq",
     "aptPackages": "jq",
+    "termuxPackages": "jq",
     "queryCommand": "jq",
     "category": "Utility",
-    "description": "Command-line light JSON query processor",
-    "required": true
+    "description": "Command-line JSON query processor",
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "tmux",
-    "displayName": "Tmux",
+    "displayName": "tmux",
     "aptPackages": "tmux",
+    "termuxPackages": "tmux",
     "queryCommand": "tmux",
     "category": "Terminal",
-    "description": "Terminal session multiplexer window manager",
-    "required": true
+    "description": "Terminal session multiplexer",
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "sqlite3",
     "displayName": "SQLite3",
     "aptPackages": "sqlite3",
+    "termuxPackages": "sqlite",
     "queryCommand": "sqlite3",
     "category": "Database",
-    "description": "Command-line dynamic shell for SQLite DBs",
-    "required": true
+    "description": "SQLite command-line shell",
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "python3",
-    "displayName": "Python3",
+    "displayName": "Python 3",
     "aptPackages": "python3",
+    "termuxPackages": "python",
     "queryCommand": "python3",
     "category": "Runtime",
-    "description": "Python interpreter language runtime",
-    "required": true
+    "description": "Python interpreter",
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "nodejs",
     "displayName": "Node.js",
     "aptPackages": "nodejs",
+    "termuxPackages": "nodejs",
     "queryCommand": "node",
     "category": "Runtime",
-    "description": "Node.js JavaScript server runtime engine",
-    "required": true
+    "description": "Node.js JavaScript runtime",
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "npm",
-    "displayName": "NPM",
+    "displayName": "npm",
     "aptPackages": "npm",
+    "termuxPackages": "npm",
     "queryCommand": "npm",
     "category": "Runtime",
-    "description": "Node package package indexing manager",
-    "required": true
+    "description": "Node package manager",
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "gcc",
     "displayName": "GCC",
     "aptPackages": "gcc",
+    "termuxPackages": "gcc",
     "queryCommand": "gcc",
     "category": "Development",
-    "description": "GNU Compiler C language compiler core",
-    "required": true
+    "description": "GNU C compiler",
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "build-essential",
-    "displayName": "Build Essential",
+    "displayName": "build-essential",
     "aptPackages": "build-essential",
+    "termuxPackages": "build-essential",
     "queryCommand": "make",
     "category": "Development",
-    "description": "Meta-package for compiling software (make, gcc, libc)",
-    "required": true
+    "description": "Build toolchain meta-package (make, gcc, libc-dev)",
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "make",
-    "displayName": "Make",
+    "displayName": "make",
     "aptPackages": "make",
+    "termuxPackages": "make",
     "queryCommand": "make",
     "category": "Development",
-    "description": "Build engineering and task automation helper",
-    "required": true
+    "description": "Build automation helper",
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "ripgrep",
-    "displayName": "Ripgrep",
+    "displayName": "ripgrep",
     "aptPackages": "ripgrep",
+    "termuxPackages": "ripgrep",
     "queryCommand": "rg",
     "category": "Utility",
     "description": "Fast, modern line-oriented search tool",
-    "required": true
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "htop",
-    "displayName": "Htop",
+    "displayName": "htop",
     "aptPackages": "htop",
+    "termuxPackages": "htop",
     "queryCommand": "htop",
     "category": "Utility",
-    "description": "Interactive process viewer and system monitor",
-    "required": true
+    "description": "Interactive process viewer",
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "nano",
-    "displayName": "Nano",
+    "displayName": "nano",
     "aptPackages": "nano",
+    "termuxPackages": "nano",
     "queryCommand": "nano",
     "category": "Development",
-    "description": "Simple, easy-to-use terminal-based text editor",
-    "required": true
+    "description": "Terminal text editor",
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "openssh",
     "displayName": "OpenSSH",
     "aptPackages": "openssh-client openssh-server",
+    "termuxPackages": "openssh",
     "queryCommand": "ssh",
     "category": "Network",
-    "description": "Secure shell client for remote terminal logins",
-    "required": true
+    "description": "Secure shell client and server",
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "unzip",
-    "displayName": "Unzip",
+    "displayName": "unzip",
     "aptPackages": "unzip",
+    "termuxPackages": "unzip",
     "queryCommand": "unzip",
     "category": "Utility",
-    "description": "Extraction and diagnostic utility for ZIP archives",
-    "required": true
+    "description": "ZIP extraction utility",
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "zip",
-    "displayName": "Zip",
+    "displayName": "zip",
     "aptPackages": "zip",
+    "termuxPackages": "zip",
     "queryCommand": "zip",
     "category": "Utility",
-    "description": "Compression and file packaging utility for ZIP format",
-    "required": true
+    "description": "ZIP packaging utility",
+    "required": true,
+    "installByDefault": true
   },
   {
     "id": "tar",
-    "displayName": "Tar",
+    "displayName": "tar",
     "aptPackages": "tar",
+    "termuxPackages": "tar",
     "queryCommand": "tar",
     "category": "Utility",
-    "description": "GNU absolute tape archiver for tape/tarball archives",
-    "required": true
+    "description": "Tar archive utility",
+    "required": true,
+    "installByDefault": true
   }
 ]

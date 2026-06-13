@@ -34,6 +34,7 @@ export const DeviceBuildStatus: React.FC<DeviceBuildStatusProps> = ({ onSendComm
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
+  const [bootstrapStatus, setBootstrapStatus] = useState<any>(null);
   
   // Local compiler simulation states
   const [compiling, setCompiling] = useState<boolean>(false);
@@ -87,8 +88,46 @@ export const DeviceBuildStatus: React.FC<DeviceBuildStatusProps> = ({ onSendComm
     }
   };
 
+  const handleRefreshAll = () => {
+    fetchStatus();
+    fetchBootstrapStatus();
+    fetchApiStatus();
+  };
+
+  const fetchBootstrapStatus = async () => {
+    try {
+      const res = await fetch("/api/runtime/bootstrap/status");
+      if (res.ok) {
+        const data = await res.json();
+        setBootstrapStatus(data);
+      }
+    } catch (e) {
+      console.error("Failed to fetch bootstrap status:", e);
+    }
+  };
+
+  const [apiStatus, setApiStatus] = useState<any>(null);
+  const [apiLoading, setApiLoading] = useState<boolean>(true);
+
+  const fetchApiStatus = async () => {
+    setApiLoading(true);
+    try {
+      const res = await fetch("/api/runtime/api/status");
+      if (res.ok) {
+        const data = await res.json();
+        setApiStatus(data);
+      }
+    } catch (e) {
+      console.error("Failed to fetch API status:", e);
+    } finally {
+      setApiLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchStatus();
+    fetchBootstrapStatus();
+    fetchApiStatus();
   }, []);
 
   const handleSaveTelemetry = async () => {
@@ -292,7 +331,7 @@ export const DeviceBuildStatus: React.FC<DeviceBuildStatusProps> = ({ onSendComm
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={fetchStatus}
+            onClick={handleRefreshAll}
             className="p-1 px-3 bg-[#1A1A1E] text-white/60 hover:text-emerald-500 rounded border border-white/5 font-sans font-bold text-[10px] flex items-center gap-1 cursor-pointer transition"
           >
             <RefreshCw className="w-3 h-3" /> Quick Refresh
@@ -768,6 +807,112 @@ export const DeviceBuildStatus: React.FC<DeviceBuildStatusProps> = ({ onSendComm
             </div>
           </div>
         </div>
+      </div>
+
+      {/* RUNTIME MODULES — Package + API bridge readiness */}
+      <div id="runtime-modules-card" className="bg-[#141417] border border-white/5 rounded-xl p-5 shadow-lg mt-4 animate-fadeIn">
+        <div className="flex items-center justify-between border-b border-white/5 pb-3 mb-4">
+          <div className="flex items-center gap-1.5">
+            <Layers className="w-4 h-4 text-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.3)]" />
+            <h3 className="text-white/80 text-[11px] uppercase tracking-widest font-bold font-display">
+              Runtime Modules — One App Readiness
+            </h3>
+          </div>
+          <button
+            onClick={() => { fetchApiStatus(); }}
+            className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold font-sans cursor-pointer"
+          >
+            Refresh
+          </button>
+        </div>
+
+        {apiLoading ? (
+          <div className="flex items-center justify-center py-8 text-xs text-white/40">
+            <RefreshCw className="w-4 h-4 mr-2 animate-spin text-emerald-400" />
+            Checking runtime modules...
+          </div>
+        ) : apiStatus ? (
+          <div className="space-y-4">
+            {/* Readiness score */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-[#101012] border border-white/5 p-3 rounded-lg text-center">
+                <div className="text-[9px] text-white/30 uppercase font-bold mb-1">Package Runtime</div>
+                <div className={`text-xs font-extrabold ${bootstrapStatus?.runtimeReady ? "text-emerald-400" : "text-amber-400"}`}>
+                  {bootstrapStatus?.runtimeReady ? "READY" : "INCOMPLETE"}
+                </div>
+                <div className="text-[9px] text-white/30 mt-0.5">
+                  {bootstrapStatus?.installed ?? 0}/{bootstrapStatus?.total ?? 0} installed
+                </div>
+              </div>
+              <div className="bg-[#101012] border border-white/5 p-3 rounded-lg text-center">
+                <div className="text-[9px] text-white/30 uppercase font-bold mb-1">API Bridge</div>
+                <div className={`text-xs font-extrabold ${apiStatus.summary?.oneAppReady ? "text-emerald-400" : "text-amber-400"}`}>
+                  {apiStatus.summary?.oneAppReady ? "READY" : "PARTIAL"}
+                </div>
+                <div className="text-[9px] text-white/30 mt-0.5">
+                  {apiStatus.summary?.available ?? 0}/{apiStatus.summary?.total ?? 0} available
+                </div>
+              </div>
+              <div className="bg-[#101012] border border-white/5 p-3 rounded-lg text-center">
+                <div className="text-[9px] text-white/30 uppercase font-bold mb-1">Simulated</div>
+                <div className="text-xs font-extrabold text-blue-400">
+                  {apiStatus.summary?.simulated ?? 0}
+                </div>
+                <div className="text-[9px] text-white/30 mt-0.5">APIs in simulation mode</div>
+              </div>
+              <div className="bg-[#101012] border border-white/5 p-3 rounded-lg text-center">
+                <div className="text-[9px] text-white/30 uppercase font-bold mb-1">Native Required</div>
+                <div className="text-xs font-extrabold text-amber-400">
+                  {apiStatus.summary?.nativeRequired ?? 0}
+                </div>
+                <div className="text-[9px] text-white/30 mt-0.5">Need Android runtime</div>
+              </div>
+            </div>
+
+            {/* Missing packages list */}
+            {bootstrapStatus && bootstrapStatus.missing > 0 && (
+              <div className="space-y-1.5">
+                <span className="text-[9px] text-amber-400/80 uppercase font-bold tracking-wider">Missing Packages ({bootstrapStatus.requiredMissing} required)</span>
+                <div className="flex flex-wrap gap-1">
+                  {bootstrapStatus.packages?.filter((p: any) => !p.installed).map((p: any) => (
+                    <span key={p.id} className={`text-[8px] px-1.5 py-0.5 rounded border ${
+                      p.required ? "bg-amber-950/30 text-amber-400 border-amber-900/40" : "bg-white/5 text-white/40 border-white/10"
+                    }`}>
+                      {p.id}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Simulated/unavailable APIs */}
+            <div className="space-y-1.5">
+              <span className="text-[9px] text-blue-400/80 uppercase font-bold tracking-wider">
+                Simulated / Unavailable APIs
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {apiStatus.capabilities?.filter((c: any) => c.status !== "available").map((c: any) => (
+                  <span key={c.id} className={`text-[8px] px-1.5 py-0.5 rounded border ${
+                    c.status === "simulated"
+                      ? "bg-blue-950/30 text-blue-400 border-blue-900/40"
+                      : "bg-white/5 text-white/30 border-white/10"
+                  }`}>
+                    {c.displayName} ({c.status})
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="text-[9px] text-white/20 leading-snug pt-2 border-t border-white/5">
+              TerminAI is one app — package layer, API bridge, file tools, scripts, and AI optimizer in one dashboard.
+              Simulated APIs run in the web prototype. Native Android runtime required for full hardware access.
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-6 text-white/30 text-xs">
+            Failed to load runtime module status.
+          </div>
+        )}
       </div>
 
     </div>

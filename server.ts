@@ -3,6 +3,10 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 import { exec, execFile } from "child_process";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
@@ -498,6 +502,246 @@ app.post("/api/package-manager/install", (req, res) => {
     res.json({ command, message: `Install command ready for: ${sanitized}` });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
+  }
+});
+
+// -------------------------------------------------------
+// RUNTIME BOOTSTRAP — unified package + API bridge layer
+// -------------------------------------------------------
+
+const RUNTIME_BASELINE_PATH = path.resolve(__dirname, "runtime", "package-baseline.json");
+const API_BASELINE_PATH = path.resolve(__dirname, "runtime", "api-baseline.json");
+
+function readPackageBaseline(): any[] {
+  try {
+    if (fs.existsSync(RUNTIME_BASELINE_PATH)) {
+      const raw = fs.readFileSync(RUNTIME_BASELINE_PATH, "utf-8");
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : (parsed.packages || []);
+    }
+  } catch (e) {
+    console.error("Failed to read package baseline:", e);
+  }
+  return [];
+}
+
+function readApiBaseline(): any[] {
+  try {
+    if (fs.existsSync(API_BASELINE_PATH)) {
+      const raw = fs.readFileSync(API_BASELINE_PATH, "utf-8");
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : (parsed.capabilities || []);
+    }
+  } catch (e) {
+    console.error("Failed to read API baseline:", e);
+  }
+  return [];
+}
+
+type PkgManager = "apt" | "pkg" | "unknown";
+
+function detectPackageManager(): PkgManager {
+  if (process.env.PKG_MANAGER) {
+    const forced = process.env.PKG_MANAGER;
+    if (forced === "pkg") return "pkg";
+    if (forced === "apt") return "apt";
+  }
+  // Termux sets ANDROID_ROOT or ANDROID_DATA
+  if (process.env.ANDROID_ROOT || process.env.ANDROID_DATA) {
+    return "pkg";
+  }
+  // Check for pkg binary
+  try {
+    fs.accessSync("/data/data/com.termux/files/usr/bin/pkg", fs.constants.X_OK);
+    return "pkg";
+  } catch { /* not termux */ }
+  // Check for apt-get
+  try {
+    fs.accessSync("/usr/bin/apt-get", fs.constants.X_OK);
+    return "apt";
+  } catch { /* not debian */ }
+  return "unknown";
+}
+
+function buildInstallCommand(packages: string[], manager: PkgManager): string {
+  const sanitized = packages
+    .flatMap(p => p.split(/\s+/))
+    .map(p => {
+      const cleaned = p.trim().toLowerCase();
+      if (!/^[a-z0-9][a-z0.+-]*$/.test(cleaned)) {
+        throw new Error(`Invalid package name: ${p}`);
+      }
+      return cleaned;
+    })
+    .join(" ");
+
+  if (manager === "pkg") {
+    return `echo "Installing ${sanitized}..." && pkg update -y && pkg install -y ${sanitized}`;
+  }
+  return `echo "Installing ${sanitized}..." && apt-get update && apt-get install -y ${sanitized} || sudo apt-get update && sudo apt-get install -y ${sanitized}`;
+}
+
+function sanitizePackageNames(input: string[]): string[] {
+  return input.map(name => {
+    const cleaned = name.trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0.+-]*$/.test(cleaned)) {
+      throw new Error(`Invalid package name: ${name}`);
+    }
+    return cleaned;
+  });
+}
+
+async function checkPackageStatus(baselines: any[]): Promise<any[]> {
+  const finder = process.platform === "win32" ? "where" : "which";
+  return Promise.all(
+    baselines.map(
+      (pkg) =>
+        new Promise<any>((resolve) => {
+          const cmdName = pkg.queryCommand || pkg.id;
+          execFile(finder, [cmdName], { timeout: 5000 }, (err, stdout) => {
+            if (err || !stdout) {
+              resolve({ ...pkg, installed: false, version: null });
+              return;
+            }
+            const versionCmd = cmdName === "gcc" ? ["--version", "|", "head", "-n", "1"] : ["--version"];
+            execFile(cmdName, versionCmd.slice(0, 2), { timeout: 5000 }, (vErr, vStdout) => {
+              let version: string | null = "Detected";
+              if (!vErr && vStdout) {
+                const firstLine = vStdout.trim().split("\n")[0];
+                if (firstLine) {
+                  const match = firstLine.match(/(\d+\.\d+(\.\d+)?)/);
+                  version = match ? match[0] : firstLine.substring(0, 24);
+                }
+              }
+              resolve({ ...pkg, installed: true, version });
+            });
+          });
+        }),
+    ),
+  );
+}
+
+async function installMissingPackages(
+  baselines: any[],
+  missing: any[],
+  manager: PkgManager,
+): Promise<{ command: string; sanitized: string[] }> {
+  const pkgNames: string[] = [];
+  for (const m of missing) {
+    const name = manager === "pkg" ? (m.termuxPackages || m.aptPackages) : m.aptPackages;
+    if (name) pkgNames.push(name);
+  }
+  const sanitized = sanitizePackageNames(pkgNames);
+  const command = buildInstallCommand(sanitized, manager);
+  return { command, sanitized };
+}
+
+// GET /api/runtime/bootstrap/status
+app.get("/api/runtime/bootstrap/status", async (_req, res) => {
+  try {
+    const baselines = readPackageBaseline();
+    const packages = await checkPackageStatus(baselines);
+    const missing = packages.filter((p: any) => !p.installed);
+    const requiredMissing = packages.filter((p: any) => !p.installed && p.required !== false);
+    const installed = packages.filter((p: any) => p.installed);
+    const manager = detectPackageManager();
+
+    res.json({
+      packageManager: manager,
+      total: packages.length,
+      installed: installed.length,
+      missing: missing.length,
+      requiredMissing: requiredMissing.length,
+      runtimeReady: requiredMissing.length === 0,
+      packages,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/runtime/bootstrap/install
+app.post("/api/runtime/bootstrap/install", async (req, res) => {
+  try {
+    const { packageIds } = req.body as { packageIds?: string[] };
+    const baselines = readPackageBaseline();
+    const packages = await checkPackageStatus(baselines);
+
+    let missing: any[];
+    if (packageIds && packageIds.length > 0) {
+      const idSet = new Set(packageIds);
+      missing = packages.filter((p: any) => idSet.has(p.id) && !p.installed);
+    } else {
+      missing = packages.filter((p: any) => !p.installed && p.installByDefault !== false);
+    }
+
+    if (missing.length === 0) {
+      return res.json({ command: null, message: "All baseline packages already installed.", installed: true });
+    }
+
+    const manager = detectPackageManager();
+    const { command, sanitized } = await installMissingPackages(baselines, missing, manager);
+
+    res.json({
+      command,
+      message: `Bootstrap ready for: ${sanitized.join(" ")}`,
+      packageManager: manager,
+      missingCount: missing.length,
+      packages: sanitized,
+    });
+  } catch (error: any) {
+    res.status(error.message?.includes("Invalid package name") ? 400 : 500).json({ error: error.message });
+  }
+});
+
+// POST /api/runtime/bootstrap/repair
+app.post("/api/runtime/bootstrap/repair", async (_req, res) => {
+  try {
+    const baselines = readPackageBaseline();
+    const packages = await checkPackageStatus(baselines);
+    const missing = packages.filter((p: any) => !p.installed);
+
+    if (missing.length === 0) {
+      return res.json({ command: null, message: "Runtime is healthy. No repair needed.", healthy: true });
+    }
+
+    const manager = detectPackageManager();
+    const { command, sanitized } = await installMissingPackages(baselines, missing, manager);
+
+    res.json({
+      command,
+      message: `Repair ready for ${missing.length} missing packages: ${sanitized.join(" ")}`,
+      packageManager: manager,
+      missingCount: missing.length,
+      packages: sanitized,
+    });
+  } catch (error: any) {
+    res.status(error.message?.includes("Invalid package name") ? 400 : 500).json({ error: error.message });
+  }
+});
+
+// GET /api/runtime/api/status
+app.get("/api/runtime/api/status", (_req, res) => {
+  try {
+    const capabilities = readApiBaseline();
+    const simulated = capabilities.filter((c: any) => c.status === "simulated").length;
+    const available = capabilities.filter((c: any) => c.status === "available").length;
+    const unavailable = capabilities.filter((c: any) => c.status === "unavailable").length;
+    const nativeRequired = capabilities.filter((c: any) => c.nativeRequired).length;
+
+    res.json({
+      capabilities,
+      summary: {
+        total: capabilities.length,
+        simulated,
+        available,
+        unavailable,
+        nativeRequired,
+        oneAppReady: unavailable === 0 && nativeRequired === 0,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
