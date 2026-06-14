@@ -73,16 +73,17 @@ Labels: `android`, `priority:medium`
 
 GitHub issue: [#5](https://github.com/billybox1926-jpg/Terminai/issues/5)
 
-Status: manual workflow implemented in `.github/workflows/android-install-smoke.yml`; pending a successful manual run before closing #5.
+Status: workflow builds and uploads debug APK; hosted emulator blocked by KVM/device-offline on GitHub runners; pending real-device ADB smoke proof via `scripts/android-install-smoke.ps1` or `scripts/android-install-smoke.sh`.
 
 Add confidence that the APK installs cleanly beyond just compiling.
 
 Acceptance criteria:
-- Add an emulator or device-smoke-test workflow/job.
-- Install debug APK with `adb install`.
+- Build debug APK in CI and upload as artifact.
+- Install debug APK on a real connected Android device with `adb install`.
 - Launch `com.billybox.terminai/.MainActivity`.
+- Verify process is running via `adb shell pidof com.billybox.terminai`.
 - Capture logcat on failure.
-- Keep this optional/manual if runtime is too slow for every PR.
+- Keep this optional/manual — do not require emulator boot on hosted runners.
 
 ## 6. Runtime: enforce manifest and bundle integrity checks
 
