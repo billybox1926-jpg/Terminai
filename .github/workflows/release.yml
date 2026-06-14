@@ -138,6 +138,51 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
+      - name: Check signing inputs
+        env:
+          KEYSTORE_B64: ${{ secrets.TERMINAI_ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.TERMINAI_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.TERMINAI_ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.TERMINAI_ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${KEYSTORE_B64}" && -n "${KEYSTORE_PASSWORD}" && -n "${KEY_ALIAS}" && -n "${KEY_PASSWORD}" ]]; then
+            echo "TERMINAI_SIGNED_BUILD=true" >> "${GITHUB_ENV}"
+            echo "Signing inputs present; signed release build enabled."
+          else
+            echo "TERMINAI_SIGNED_BUILD=false" >> "${GITHUB_ENV}"
+            echo "Signing inputs incomplete or absent; signed release build skipped."
+          fi
+
+      - name: Decode signing keystore
+        if: ${{ env.TERMINAI_SIGNED_BUILD == 'true' }}
+        env:
+          KEYSTORE_B64: ${{ secrets.TERMINAI_ANDROID_KEYSTORE_B64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNNER_TEMP="${RUNNER_TEMP:-/tmp}"
+          KEYSTORE_FILE="${RUNNER_TEMP}/terminai-release.jks"
+          printf '%s' "${KEYSTORE_B64}" | base64 --decode > "${KEYSTORE_FILE}"
+          SIZE=$(stat -c%s "${KEYSTORE_FILE}" 2>/dev/null \
+            || stat -f%z "${KEYSTORE_FILE}")
+          if [[ "${SIZE}" -le 0 ]]; then
+            echo "Decoded keystore is empty." >&2
+            exit 1
+          fi
+          echo "Keystore decoded to temporary CI path (${SIZE} bytes)."
+          echo "TERMINAI_KEYSTORE_PATH=${KEYSTORE_FILE}" >> "${GITHUB_ENV}"
+
+      - name: Build Android signed release APK
+        if: ${{ env.TERMINAI_SIGNED_BUILD == 'true' }}
+        env:
+          TERMINAI_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.TERMINAI_ANDROID_KEYSTORE_PASSWORD }}
+          TERMINAI_ANDROID_KEY_ALIAS: ${{ secrets.TERMINAI_ANDROID_KEY_ALIAS }}
+          TERMINAI_ANDROID_KEY_PASSWORD: ${{ secrets.TERMINAI_ANDROID_KEY_PASSWORD }}
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
       - name: Package versioned artifacts
         shell: bash
         run: |
@@ -147,8 +192,20 @@ jobs:
           tar -czf "release-artifacts/terminai-web-dist-${VERSION}.tar.gz" -C dist .
           cp android/app/build/outputs/apk/debug/app-debug.apk \
             "release-artifacts/terminai-android-debug-${VERSION}.apk"
+
           cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
             "release-artifacts/terminai-android-release-unsigned-${VERSION}.apk"
+
+          if [[ "${TERMINAI_SIGNED_BUILD:-false}" == "true" ]]; then
+            cp android/app/build/outputs/apk/release/app-release.apk \
+              "release-artifacts/terminai-android-release-signed-${VERSION}.apk"
+            SIGNED_STATUS="signed APK included"
+            SIGNED_ARTIFACT="- terminai-android-release-signed-${VERSION}.apk — signed release APK."
+          else
+            SIGNED_STATUS="no complete signing secrets — signed APK not produced"
+            SIGNED_ARTIFACT=""
+          fi
+
           cp server.log "release-artifacts/terminai-web-server-${VERSION}.log"
           (
             cd release-artifacts
@@ -164,11 +221,14 @@ jobs:
           - terminai-web-dist-${VERSION}.tar.gz — production Vite client, bundled Express server, and runtime bundle manifest.
           - terminai-android-debug-${VERSION}.apk — debug APK for install/testing.
           - terminai-android-release-unsigned-${VERSION}.apk — unsigned release APK.
+          ${SIGNED_ARTIFACT}
           - terminai-${VERSION}-sha256sums.txt — SHA-256 checksums.
 
           ## Signing status
 
-          The unsigned release APK is not final distribution signing. Signed Android release builds are tracked separately and should not be assumed complete from this artifact.
+          The unsigned release APK is not final distribution signing.
+          ${SIGNED_STATUS}
+          See docs/android-signing.md for how to configure signing secrets.
           EOF
 
       - name: Upload release workflow artifacts
@@ -199,3 +259,9 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --title "TerminAI ${TERMINAI_RELEASE_VERSION}" \
             --notes-file release-notes.md
+
+      - name: Clean up keystore
+        if: ${{ always() && env.TERMINAI_SIGNED_BUILD == 'true' }}
+        shell: bash
+        run: |
+          rm -f "${TERMINAI_KEYSTORE_PATH:-}"

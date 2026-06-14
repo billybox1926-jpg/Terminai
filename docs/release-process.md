@@ -87,6 +87,7 @@ The workflow packages:
 - `terminai-web-dist-<version>.tar.gz`
 - `terminai-android-debug-<version>.apk`
 - `terminai-android-release-unsigned-<version>.apk`
+- `terminai-android-release-signed-<version>.apk` (only when signing secrets are configured)
 - `terminai-<version>-sha256sums.txt`
 - `terminai-web-server-<version>.log`
 
@@ -125,7 +126,7 @@ The release workflow intentionally does not require signing secrets yet.
 
 `terminai-android-release-unsigned-<version>.apk` is not final distribution signing. It is a release-shape artifact produced by CI so the project can verify build reproducibility and packaging before adding keystore handling.
 
-Signed Android release builds are tracked separately in issue #4.
+Signed Android release builds are now supported via conditional signing secrets. When `TERMINAI_ANDROID_KEYSTORE_B64`, `TERMINAI_ANDROID_KEYSTORE_PASSWORD`, `TERMINAI_ANDROID_KEY_ALIAS`, and `TERMINAI_ANDROID_KEY_PASSWORD` are all configured as GitHub Actions secrets, the release workflow decodes the keystore and produces a signed release APK. Without secrets, the workflow produces the existing unsigned release APK. See `docs/android-signing.md` for full setup.
 
 ## Future release-hardening issues
 
