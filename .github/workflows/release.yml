@@ -138,6 +138,20 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
+      - name: Stage unsigned release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          UNSIGNED_APK="android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          STAGED_UNSIGNED_APK="${RUNNER_TEMP}/terminai-release-unsigned.apk"
+          if [[ ! -f "${UNSIGNED_APK}" ]]; then
+            echo "Unsigned release APK was not produced at ${UNSIGNED_APK}" >&2
+            find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print >&2 || true
+            exit 1
+          fi
+          cp "${UNSIGNED_APK}" "${STAGED_UNSIGNED_APK}"
+          echo "TERMINAI_UNSIGNED_APK=${STAGED_UNSIGNED_APK}" >> "${GITHUB_ENV}"
+
       - name: Check signing inputs
         env:
           KEYSTORE_B64: ${{ secrets.TERMINAI_ANDROID_KEYSTORE_B64 }}
@@ -193,7 +207,7 @@ jobs:
           cp android/app/build/outputs/apk/debug/app-debug.apk \
             "release-artifacts/terminai-android-debug-${VERSION}.apk"
 
-          cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
+          cp "${TERMINAI_UNSIGNED_APK}" \
             "release-artifacts/terminai-android-release-unsigned-${VERSION}.apk"
 
           if [[ "${TERMINAI_SIGNED_BUILD:-false}" == "true" ]]; then
