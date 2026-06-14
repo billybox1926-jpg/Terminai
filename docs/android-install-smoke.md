@@ -21,7 +21,18 @@ This workflow does not prove the full runtime bundle, terminal engine, or native
 5. Choose the branch to test.
 6. Run the workflow.
 
-The workflow builds the debug APK, starts a headless Android emulator, installs the APK, launches `MainActivity`, and checks that the `com.billybox.terminai` process is running.
+The workflow builds the debug APK, starts a headless Android emulator (API 30, Nexus 6 profile), installs the APK, launches `MainActivity`, and checks that the `com.billybox.terminai` process is running.
+
+## Emulator configuration
+
+The smoke test uses a **lightweight API 30 emulator** for CI stability:
+
+- **API level:** 30 (Android 11) — lighter than API 34, faster boot on hosted runners
+- **Profile:** Nexus 6 — smaller screen footprint than Pixel 6
+- **Animations:** disabled
+- **Boot timeout:** 600 seconds
+
+The app's **compileSdk and targetSdk remain 34** — only the emulator runtime is API 30. This validates that the APK built with SDK 34 can install and launch on a lower API level runtime.
 
 ## Artifacts
 
