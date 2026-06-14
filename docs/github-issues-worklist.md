@@ -187,3 +187,19 @@ Acceptance criteria:
 - Add tests for workspace path resolution.
 - Add tests for AI provider selection without real API keys.
 - Wire tests into `npm run check` and CI.
+
+## 13. Android: v0.2 native runtime health proof
+
+Labels: `android`, `runtime`, `priority:high`
+
+Status: addressed by `docs/android-v0.2-runtime-proof.md` and the native MainActivity health report UI.
+
+Make the installed Android app do one local useful thing beyond launching: show runtime/device status, write an app-owned JSON health report, and support copy/share of that report.
+
+Acceptance criteria:
+- MainActivity displays app identity, package, Android SDK/API, manufacturer/model, runtime root, workspace root, state root, and timestamp.
+- `Run Health Check` writes `terminai-health-report.json` under app-owned state.
+- Report includes package/version/device/path existence, runtime bundle status, API bridge status, and generated timestamp.
+- UI displays the latest report after generation.
+- `Copy Report` copies the JSON via ClipboardManager.
+- `Share Report` opens an Android `ACTION_SEND` `text/plain` share sheet.
