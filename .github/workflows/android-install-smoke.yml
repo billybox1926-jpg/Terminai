@@ -2,6 +2,15 @@ name: Android APK Install Smoke Test
 
 on:
   workflow_dispatch:
+    inputs:
+      run_emulator:
+        description: "Attempt hosted emulator install smoke; may be flaky without KVM"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 permissions:
   contents: read
@@ -12,7 +21,7 @@ concurrency:
 
 jobs:
   install-smoke:
-    name: Build, install, and launch debug APK
+    name: Build debug APK and optionally run emulator smoke
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -42,9 +51,7 @@ jobs:
           "${SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" \
             "platform-tools" \
             "platforms;android-34" \
-            "build-tools;34.0.0" \
-            "emulator" \
-            "system-images;android-30;google_apis;x86_64"
+            "build-tools;34.0.0"
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -62,7 +69,15 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
 
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminai-android-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
       - name: Run emulator install smoke test
+        if: ${{ github.event.inputs.run_emulator == 'true' }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
@@ -86,11 +101,25 @@ jobs:
         run: adb logcat -d > logcat.txt || true
 
       - name: Upload smoke test artifacts
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: android-smoke-test-artifacts
-          path: |
-            android/app/build/outputs/apk/debug/app-debug.apk
-            logcat.txt
+          path: logcat.txt
           if-no-files-found: warn
+
+      - name: Print local verification instructions
+        if: ${{ github.event.inputs.run_emulator == 'false' }}
+        shell: bash
+        run: |
+          echo "=== Hosted emulator run skipped (run_emulator=false) ==="
+          echo ""
+          echo "To verify the APK on a real device, download the artifact"
+          echo "'terminai-android-debug-apk' from this workflow run, then run:"
+          echo ""
+          echo "  adb install -r app-debug.apk"
+          echo "  adb shell am start -n com.billybox.terminai/.MainActivity"
+          echo "  sleep 5"
+          echo "  adb shell pidof com.billybox.terminai"
+          echo ""
+          echo "Expected: pidof returns a process ID > 0."
