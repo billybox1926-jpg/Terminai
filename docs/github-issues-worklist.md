@@ -73,14 +73,17 @@ Labels: `android`, `priority:medium`
 
 GitHub issue: [#5](https://github.com/billybox1926-jpg/Terminai/issues/5)
 
+Status: manual workflow implemented in `.github/workflows/android-install-smoke.yml`; pending a successful manual run before closing #5.
+
 Add confidence that the APK installs cleanly beyond just compiling.
 
 Acceptance criteria:
-- Add an emulator or device-smoke-test workflow/job.
-- Install debug APK with `adb install`.
+- Build debug APK in CI and upload as artifact.
+- Install debug APK on a real connected Android device with `adb install`.
 - Launch `com.billybox.terminai/.MainActivity`.
+- Verify process is running via `adb shell pidof com.billybox.terminai`.
 - Capture logcat on failure.
-- Keep this optional/manual if runtime is too slow for every PR.
+- Keep this optional/manual — do not require emulator boot on hosted runners.
 
 ## 6. Runtime: enforce manifest and bundle integrity checks
 
@@ -184,3 +187,19 @@ Acceptance criteria:
 - Add tests for workspace path resolution.
 - Add tests for AI provider selection without real API keys.
 - Wire tests into `npm run check` and CI.
+
+## 13. Android: v0.2 native runtime health proof
+
+Labels: `android`, `runtime`, `priority:high`
+
+Status: addressed by `docs/android-v0.2-runtime-proof.md` and the native MainActivity health report UI.
+
+Make the installed Android app do one local useful thing beyond launching: show runtime/device status, write an app-owned JSON health report, and support copy/share of that report.
+
+Acceptance criteria:
+- MainActivity displays app identity, package, Android SDK/API, manufacturer/model, runtime root, workspace root, state root, and timestamp.
+- `Run Health Check` writes `terminai-health-report.json` under app-owned state.
+- Report includes package/version/device/path existence, runtime bundle status, API bridge status, and generated timestamp.
+- UI displays the latest report after generation.
+- `Copy Report` copies the JSON via ClipboardManager.
+- `Share Report` opens an Android `ACTION_SEND` `text/plain` share sheet.
