@@ -73,7 +73,7 @@ Labels: `android`, `priority:medium`
 
 GitHub issue: [#5](https://github.com/billybox1926-jpg/Terminai/issues/5)
 
-Status: workflow builds and uploads debug APK; hosted emulator blocked by KVM/device-offline on GitHub runners; pending real-device ADB smoke proof via `scripts/android-install-smoke.ps1` or `scripts/android-install-smoke.sh`.
+Status: manual workflow implemented in `.github/workflows/android-install-smoke.yml`; pending a successful manual run before closing #5.
 
 Add confidence that the APK installs cleanly beyond just compiling.
 
