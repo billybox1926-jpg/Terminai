@@ -33,7 +33,45 @@
             android:text="com.billybox.terminai"
             android:textSize="12sp"
             android:textColor="@color/terminai_text_dim"
-            android:layout_marginBottom="24dp" />
+            android:layout_marginBottom="16dp" />
+
+        <!-- Device/runtime proof card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@color/terminai_surface"
+            android:padding="16dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Device Runtime Proof"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="@color/terminai_text"
+                android:layout_marginBottom="12dp" />
+
+            <TextView
+                android:id="@+id/tv_identity_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="App/package/device status"
+                android:textSize="13sp"
+                android:textColor="@color/terminai_text"
+                android:layout_marginBottom="12dp" />
+
+            <TextView
+                android:id="@+id/tv_path_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Runtime/workspace/state paths"
+                android:textSize="12sp"
+                android:textColor="@color/terminai_text_dim"
+                android:fontFamily="monospace" />
+
+        </LinearLayout>
 
         <!-- Runtime status card -->
         <LinearLayout
@@ -99,7 +137,68 @@
 
         </LinearLayout>
 
-        <!-- Action buttons -->
+        <!-- Health proof card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@color/terminai_surface"
+            android:padding="16dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Local Health Report"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="@color/terminai_text"
+                android:layout_marginBottom="12dp" />
+
+            <Button
+                android:id="@+id/btn_run_health_check"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/btn_run_health_check"
+                android:layout_marginBottom="8dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="12dp">
+
+                <Button
+                    android:id="@+id/btn_copy_report"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/btn_copy_report"
+                    android:layout_marginEnd="4dp" />
+
+                <Button
+                    android:id="@+id/btn_share_report"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/btn_share_report"
+                    android:layout_marginStart="4dp" />
+
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tv_health_report"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="No health check run yet. Tap Run Health Check to write terminai-health-report.json under app-owned state."
+                android:textSize="11sp"
+                android:textColor="@color/terminai_text_dim"
+                android:fontFamily="monospace"
+                android:textIsSelectable="true" />
+
+        </LinearLayout>
+
+        <!-- Existing action buttons -->
         <Button
             android:id="@+id/btn_check_runtime_bundle"
             android:layout_width="match_parent"
