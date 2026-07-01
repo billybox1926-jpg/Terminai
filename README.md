@@ -87,6 +87,16 @@ npm run dev
 Open:
 `http://localhost:3000`
 
+### Usage
+
+```bash
+npm install
+npm run build
+npx terminai
+```
+
+`npx terminai` starts the production server on `http://localhost:3000`.
+
 ## Build and release artifacts
 
 GitHub Actions is the official build gate for TerminAI. Local builds are useful for development, but release artifacts should come from Actions runs on GitHub. The web gate now validates runtime manifests, runs real Node tests, and smoke-tests command/file API safety before artifacts are trusted.

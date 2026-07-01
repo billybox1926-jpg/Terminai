@@ -1,9 +1,25 @@
 {
   "name": "terminai",
-  "private": true,
   "version": "0.1.0",
   "description": "AI-powered local terminal workspace and developer dashboard.",
   "type": "module",
+  "bin": {
+    "terminai": "scripts/terminai-cli.mjs"
+  },
+  "files": [
+    "dist",
+    "scripts",
+    "runtime",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/billybox1926-jpg/Terminai.git"
+  },
+  "homepage": "https://github.com/billybox1926-jpg/Terminai",
+  "license": "MIT",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/server.js",
