@@ -23,7 +23,7 @@ if (-not (Test-Path $apkPath)) {
 }
 
 Write-Host "Checking ADB devices..."
-$devices = adb devices | Select-String -Pattern "\tdevice$"
+$devices = adb devices | Select-String -Pattern "device$" -SimpleMatch
 if (-not $devices) {
     Write-Error "No connected Android device found. Enable USB debugging and connect a device."
     exit 1
