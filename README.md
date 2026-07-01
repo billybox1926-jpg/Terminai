@@ -237,4 +237,4 @@ The next serious milestones are:
 5. Implement remaining API bridge modules (battery, clipboard, notifications).
 
 ## License
-No license has been selected yet.
+MIT License — see [LICENSE](LICENSE) for details.
