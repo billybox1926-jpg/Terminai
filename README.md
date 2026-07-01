@@ -98,8 +98,9 @@ Open the [Actions tab](https://github.com/billybox1926-jpg/Terminai/actions), se
 - `terminai-web-dist` comes from the `TerminAI Web CI` workflow and contains the production web/client and bundled server `dist/` output.
 - `terminai-android-debug-apk` comes from the `TerminAI Android Native` workflow and contains the debug APK for install/testing.
 - `terminai-android-release-unsigned-apk` comes from the `TerminAI Android Native` workflow and contains the unsigned release APK.
+- `terminai-android-release-signed-apk` comes from the `TerminAI Release` workflow when signing secrets are configured.
 
-The unsigned release APK is not final distribution signing. It is a CI-produced release-shape artifact only; signed Android distribution is a separate release-hardening step.
+The unsigned release APK is not final distribution signing. It is a CI-produced release-shape artifact only. Signed release APKs are produced only when GitHub Actions signing secrets are configured. See `docs/android-signing.md` for setup.
 
 ### Release artifacts
 
@@ -236,4 +237,4 @@ The next serious milestones are:
 5. Implement remaining API bridge modules (battery, clipboard, notifications).
 
 ## License
-No license has been selected yet.
+MIT License — see [LICENSE](LICENSE) for details.

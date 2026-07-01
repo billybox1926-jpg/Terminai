@@ -7,6 +7,9 @@
     <string name="btn_verify_runtime_integrity">Verify Runtime Integrity</string>
     <string name="btn_api_bridge_status">API Bridge Status</string>
     <string name="btn_open_dashboard">Open Dashboard</string>
+    <string name="btn_run_health_check">Run Health Check</string>
+    <string name="btn_copy_report">Copy Report</string>
+    <string name="btn_share_report">Share Report</string>
     <string name="status_placeholder">Placeholder — runtime assets not yet bundled</string>
     <string name="status_ready">Ready</string>
     <string name="status_not_ready">Not Ready</string>
