@@ -240,7 +240,7 @@ export const DeviceBuildStatus: React.FC<DeviceBuildStatusProps> = ({ onSendComm
 
     const steps = [
       `[TerminAI Git Engine] Initializing git pipeline parameters...`,
-      `[TerminAI Git Engine] Target Repository: ${repoUrl}`,
+      `[TerminAI Git Engine] Target Repository: ${repoUrl.replace(/\/\/.*@/, '//***@')}`,
       gitToken.trim() ? `[TerminAI Git Engine] Authorizing with token...` : `[TerminAI Git Engine] Using public remote access...`,
       `[TerminAI Git Engine] Target commit reference: ${targetCommit}`,
       `[TerminAI Git Engine] Verifying remote repository reachability...`,
@@ -267,13 +267,7 @@ export const DeviceBuildStatus: React.FC<DeviceBuildStatusProps> = ({ onSendComm
         if (onSendCommand) {
           const stashOption = useAutostash ? " --autostash" : "";
           
-          let authenticatedUrl = repoUrl;
-          if (gitToken.trim()) {
-            const cleanUrl = repoUrl.replace(/^https?:\/\//i, "");
-            authenticatedUrl = `https://${gitToken.trim()}@${cleanUrl}`;
-          }
-
-          const fetchCmd = `if [ ! -d .git ]; then echo "⚙️ No Git repository found. Initializing and configuring baseline..." && git init && git config user.name "TerminAI Bot" && git config user.email "bot@terminai.io" && git add -A && git commit -m "Local workspace snapshot" && git remote add origin ${authenticatedUrl}; else echo "⚙️ Git repository detected. Synchronizing remote target..." && git remote set-url origin ${authenticatedUrl} || git remote add origin ${authenticatedUrl}; fi && echo "📥 Fetching commits from tracking upstream..." && git fetch origin && echo "🚧 Aligning commits: Running git rebase on ${targetCommit}..." && (git rebase${stashOption} ${targetCommit} || (echo "⚠️ Conflicts or stash required. Running stash and rebase sequence..." && git stash && git rebase${stashOption} ${targetCommit} && git stash pop))`;
+          const fetchCmd = `if [ ! -d .git ]; then echo "⚙️ No Git repository found. Initializing and configuring baseline..." && git init && git config user.name "TerminAI Bot" && git config user.email "bot@terminai.io" && git add -A && git commit -m "Local workspace snapshot" && git remote add origin ${repoUrl}; else echo "⚙️ Git repository detected. Synchronizing remote target..." && git remote set-url origin ${repoUrl} || git remote add origin ${repoUrl}; fi && echo "📥 Fetching commits from tracking upstream..." && git fetch origin && echo "🚧 Aligning commits: Running git rebase on ${targetCommit}..." && (git rebase${stashOption} ${targetCommit} || (echo "⚠️ Conflicts or stash required. Running stash and rebase sequence..." && git stash && git rebase${stashOption} ${targetCommit} && git stash pop))`;
           onSendCommand(fetchCmd);
         }
       }
