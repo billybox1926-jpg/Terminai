@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { 
   Terminal as TermIcon, 
   Sparkles, 
@@ -51,6 +51,13 @@ export default function App() {
   // Telemetry statistics
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [statsLoading, setStatsLoading] = useState<boolean>(false);
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const telemetryAbortRef = useRef<AbortController | null>(null);
+  const currentCwdRef = useRef<string>(".");
+
+  useEffect(() => {
+    currentCwdRef.current = currentCwd;
+  }, [currentCwd]);
 
   // File selection for GUI text editor
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -61,25 +68,38 @@ export default function App() {
   // UTC clock state
   const [utcTime, setUtcTime] = useState<string>("");
 
-  // Fetch telemetry from local server container
-  const fetchTelemetry = async () => {
+  // Fetch telemetry from local server container without blocking the terminal UI.
+  const fetchTelemetry = useCallback(async () => {
+    telemetryAbortRef.current?.abort();
+    const controller = new AbortController();
+    telemetryAbortRef.current = controller;
     setStatsLoading(true);
     try {
-      const response = await fetch("/api/system/stats");
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data);
-        // Safely capture initial process workspace folder if not set
-        if (currentCwd === "." && data.cwd) {
-          setCurrentCwd(data.cwd);
-        }
+      const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+      const response = await fetch("/api/system/stats", { signal: controller.signal });
+      window.clearTimeout(timeoutId);
+      if (!response.ok) {
+        throw new Error(`Telemetry request failed (${response.status})`);
+      }
+      const data = await response.json();
+      setStats(data);
+      setStatsError(null);
+      if (currentCwdRef.current === "." && data.cwd) {
+        setCurrentCwd(data.cwd);
       }
     } catch (err) {
-      console.error("Telemetry query failed:", err);
+      if ((err as Error).name !== "AbortError") {
+        const message = err instanceof Error ? err.message : "Telemetry unavailable";
+        setStatsError(message);
+        console.error("Telemetry query failed:", err);
+      }
     } finally {
-      setStatsLoading(false);
+      if (telemetryAbortRef.current === controller) {
+        telemetryAbortRef.current = null;
+        setStatsLoading(false);
+      }
     }
-  };
+  }, []);
 
   // Synchronous timers & Initial State construction
   useEffect(() => {
@@ -125,8 +145,9 @@ export default function App() {
     return () => {
       clearInterval(statsInterval);
       clearInterval(clockInterval);
+      telemetryAbortRef.current?.abort();
     };
-  }, []);
+  }, [fetchTelemetry]);
 
   // Session Creators and Swappers
   const handleCreateSession = () => {
@@ -186,11 +207,13 @@ export default function App() {
 
     // 1. Log native statement to screen
     const commandId = Math.random().toString();
+    const targetSession = sessions.find(s => s.id === activeSessionId);
+    const requestCwd = targetSession?.cwd || currentCwd;
     const commandLine: TerminalLine = {
       id: commandId,
       type: "command",
       text: cmdClean,
-      cwd: currentCwd,
+      cwd: requestCwd,
       timestamp: timestamp
     };
     
@@ -223,7 +246,9 @@ export default function App() {
 - ls -la          Detailed files visualization
 - env             List process environment variables
 - npm run lint    Verify codebase integrity
-- clear           Reset terminal logs`,
+- pwd             Print actual working directory
+- clear           Reset terminal logs
+- help            Show this command reference`,
         timestamp: timestamp
       };
 
@@ -243,7 +268,7 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           command: cmdClean,
-          cwd: currentCwd
+          cwd: requestCwd
         })
       });
 
@@ -255,21 +280,32 @@ export default function App() {
       const payloadLines: TerminalLine[] = [];
 
       // Append standard answers
-      if (data.stdout && data.stdout.trim()) {
-        payloadLines.push({
-          id: Math.random().toString(),
-          type: "stdout",
-          text: data.stdout,
-          timestamp: timestamp
+      if (Array.isArray(data.output) && data.output.length > 0) {
+        data.output.forEach((chunk: { stream: "stdout" | "stderr"; text: string }) => {
+          const cleanText = chunk.text.replace(/\u001eTERMINAI_CWD_44fb5948\u001e[\s\S]*$/, "").trimEnd();
+          if (cleanText.trim()) {
+            payloadLines.push({
+              id: Math.random().toString(),
+              type: chunk.stream,
+              text: cleanText,
+              timestamp: timestamp
+            });
+          }
         });
+      } else {
+        if (data.stdout && data.stdout.trim()) {
+          payloadLines.push({ id: Math.random().toString(), type: "stdout", text: data.stdout, timestamp });
+        }
+        if (data.stderr && data.stderr.trim()) {
+          payloadLines.push({ id: Math.random().toString(), type: "stderr", text: data.stderr, timestamp });
+        }
       }
 
-      // Append errors
-      if (data.stderr && data.stderr.trim()) {
+      if (data.truncated) {
         payloadLines.push({
           id: Math.random().toString(),
-          type: "stderr",
-          text: data.stderr,
+          type: "info",
+          text: data.truncationMessage || "... (output truncated)",
           timestamp: timestamp
         });
       }
@@ -289,6 +325,7 @@ export default function App() {
         if (s.id === activeSessionId) {
           return {
             ...s,
+            cwd: data.newCwd || s.cwd,
             lines: [...s.lines, ...payloadLines]
           };
         }
@@ -296,14 +333,10 @@ export default function App() {
       }));
 
       // 3. Synchronize ending working directories!
-      if (data.newCwd && data.newCwd !== currentCwd) {
+      if (data.newCwd) {
         setCurrentCwd(data.newCwd);
-        // Force refresh explorer files since directory changed
-        setRefreshExplorer(prev => prev + 1);
-      } else {
-        // Run refresh anyways because files or sizes might have changed (e.g., touch file, rm file)
-        setRefreshExplorer(prev => prev + 1);
       }
+      setRefreshExplorer(prev => prev + 1);
 
     } catch (err: any) {
       const errLine = {
@@ -507,6 +540,7 @@ export default function App() {
             stats={stats}
             onRefresh={fetchTelemetry}
             loading={statsLoading}
+            error={statsError}
           />
 
           {/* Visual file system explorer */}
@@ -547,7 +581,7 @@ export default function App() {
       {/* Humble OS status info footer */}
       <footer className="bg-[#121214] border-t border-white/5 p-3 text-center text-xs font-mono text-white/40 shrink-0">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-1 max-w-7xl mx-auto w-full px-2">
-          <span>Terminai Host workspace: <span className="text-emerald-400 font-bold">{currentCwd}</span></span>
+          <span>Terminai Host workspace: <span className="text-emerald-400 font-bold">{activeSessionObj?.cwd || currentCwd}</span></span>
           <span className="text-[10px] text-white/30">Secure Sandboxed Container Shell Environment</span>
         </div>
       </footer>

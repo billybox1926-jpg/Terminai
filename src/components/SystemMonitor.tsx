@@ -1,14 +1,15 @@
-import React, { useEffect, useState } from "react";
-import { Cpu, HardDrive, Shield, Activity, RefreshCw } from "lucide-react";
+import React from "react";
+import { Cpu, HardDrive, Shield, Activity, RefreshCw, AlertTriangle } from "lucide-react";
 import { SystemStats } from "../types";
 
 interface SystemMonitorProps {
   stats: SystemStats | null;
   onRefresh: () => void;
   loading: boolean;
+  error?: string | null;
 }
 
-export const SystemMonitor: React.FC<SystemMonitorProps> = ({ stats, onRefresh, loading }) => {
+export const SystemMonitor: React.FC<SystemMonitorProps> = ({ stats, onRefresh, loading, error }) => {
   const formatUptime = (seconds: number) => {
     const days = Math.floor(seconds / (3600 * 24));
     const hours = Math.floor((seconds % (3600 * 24)) / 3600);
@@ -25,9 +26,13 @@ export const SystemMonitor: React.FC<SystemMonitorProps> = ({ stats, onRefresh, 
 
   if (!stats) {
     return (
-      <div id="sys-monitor-loading" className="flex items-center justify-center p-8 text-neutral-400 font-mono text-xs">
-        <RefreshCw className="w-4 h-4 mr-2 animate-spin text-cyan-400" />
-        Syncing system monitors...
+      <div id="sys-monitor-loading" className="flex flex-col items-center justify-center gap-2 p-8 text-neutral-400 font-mono text-xs">
+        <div className="flex items-center">
+          <RefreshCw className="w-4 h-4 mr-2 animate-spin text-cyan-400" />
+          Syncing system monitors...
+        </div>
+        {error && <div className="flex items-center gap-1 text-amber-300"><AlertTriangle className="w-3.5 h-3.5" /> {error}</div>}
+        <button onClick={onRefresh} disabled={loading} className="text-[10px] text-emerald-400 hover:text-emerald-300 disabled:opacity-50">Refresh telemetry</button>
       </div>
     );
   }
@@ -42,14 +47,21 @@ export const SystemMonitor: React.FC<SystemMonitorProps> = ({ stats, onRefresh, 
           <Activity className="w-4 h-4 text-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)] animate-pulse" />
           <h2 className="text-xs font-semibold text-white/90 uppercase tracking-wider font-display">Telemetry & Real Stats</h2>
         </div>
-        <button
-          onClick={onRefresh}
-          disabled={loading}
-          className="p-1 hover:bg-[#1A1A1E] text-white/40 hover:text-emerald-500 rounded transition cursor-pointer"
-          title="Force telemetry refresh"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          {error && (
+            <span className="flex items-center gap-1 text-[10px] text-amber-300" title={error}>
+              <AlertTriangle className="w-3.5 h-3.5" /> Last refresh failed
+            </span>
+          )}
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            className="p-1 hover:bg-[#1A1A1E] text-white/40 hover:text-emerald-500 rounded transition cursor-pointer disabled:opacity-50"
+            title={error ? `Force telemetry refresh (last error: ${error})` : "Force telemetry refresh"}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import os from "os";
-import { exec, execFile } from "child_process";
+import { exec, execFile, spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { createHash } from "crypto";
 
@@ -19,6 +19,9 @@ const app = express();
 const PORT = Number.parseInt(process.env.PORT ?? "3000", 10);
 const COMMAND_TIMEOUT_MS = Number.parseInt(process.env.TERMINAI_COMMAND_TIMEOUT_MS ?? "30000", 10);
 const COMMAND_MAX_BUFFER = Number.parseInt(process.env.TERMINAI_COMMAND_MAX_BUFFER ?? "1048576", 10);
+const WORKSPACE_ROOT = path.resolve(process.env.TERMINAI_WORKSPACE_ROOT || process.cwd());
+const TERMINAL_CWD_MARKER = "\u001eTERMINAI_CWD_44fb5948\u001e";
+const TERMINAL_OUTPUT_TRUNCATED = "... (output truncated)";
 
 // Body parser
 app.use(express.json());
@@ -42,6 +45,56 @@ function getGeminiClient(): GoogleGenAI {
     });
   }
   return aiClient;
+}
+
+
+/** Returns true when targetPath is inside the configured workspace root. */
+function isInsideWorkspace(targetPath: string): boolean {
+  const relative = path.relative(WORKSPACE_ROOT, path.resolve(targetPath));
+  return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+/** Resolves a user supplied path against a cwd and clamps it to the workspace root. */
+function resolveWorkspacePath(inputPath: string | undefined, cwd = WORKSPACE_ROOT): string {
+  const base = isInsideWorkspace(cwd) ? path.resolve(cwd) : WORKSPACE_ROOT;
+  const resolved = inputPath ? path.resolve(base, inputPath) : base;
+  if (!isInsideWorkspace(resolved)) {
+    throw new Error("Access denied: path is outside the Terminai workspace.");
+  }
+  return resolved;
+}
+
+/** Converts an absolute workspace path into the relative path used by frontend file APIs. */
+function toWorkspaceRelative(targetPath: string): string {
+  const relative = path.relative(WORKSPACE_ROOT, targetPath);
+  return relative === "" ? "." : relative;
+}
+
+function appendLimited(chunks: string[], text: string, state: { bytes: number; truncated: boolean }): string {
+  if (!text || state.truncated) return "";
+  const remaining = COMMAND_MAX_BUFFER - state.bytes;
+  if (remaining <= 0) {
+    state.truncated = true;
+    return "";
+  }
+  const slice = text.slice(0, remaining);
+  const redactedSlice = redactSensitiveOutput(slice);
+  chunks.push(redactedSlice);
+  state.bytes += slice.length;
+  if (slice.length < text.length) state.truncated = true;
+  return redactedSlice;
+}
+
+
+function parseSimpleCd(command: string): string | null {
+  const match = command.match(/^cd(?:\s+(.+?))?\s*$/);
+  if (!match) return null;
+  const rawTarget = (match[1] || "").trim().replace(/^['"]|['"]$/g, "");
+  return rawTarget === "" || rawTarget === "~" || rawTarget === "$HOME" ? "." : rawTarget.replace(/^\$HOME(?=\/|$)/, ".");
+}
+
+function looksLikeSandboxEscape(command: string): boolean {
+  return /(^|[;&|\s])rm\s+[^;&|]*(\.\.|\s\/)(?=\s|$)/.test(command) || /(^|[;&|\s])(cat|less|more|head|tail|rm|cp|mv|touch|mkdir|rmdir)\s+[^;&|]*\/(etc|dev|proc|sys|root|tmp)(?=\/|\s|$)/.test(command);
 }
 
 // ----------------------------------------------------
@@ -76,7 +129,7 @@ app.get("/api/system/stats", (req, res) => {
       console.error("Failed to fetch CPU model:", e);
     }
 
-    exec("df -h . | tail -1", (err, stdout) => {
+    execFile("df", ["-h", WORKSPACE_ROOT], { timeout: 5000 }, (err, stdout) => {
       let diskInfo = { total: "10GB", used: "2GB", free: "8GB", percent: "20%" };
       try {
         if (!err && stdout) {
@@ -113,7 +166,7 @@ app.get("/api/system/stats", (req, res) => {
             release: osRelease,
             platform: os.platform()
           },
-          cwd: process.cwd()
+          cwd: WORKSPACE_ROOT
         });
       } catch (sendError: any) {
         console.error("Failed to send stats response:", sendError);
@@ -146,81 +199,104 @@ function validateCommandInput(command: string): void {
   }
 }
 app.post("/api/terminal/execute", (req, res) => {
-  const { command, cwd } = req.body;
-  if (!command) {
+  const { command, cwd } = req.body as { command?: string; cwd?: string };
+  if (!command || typeof command !== "string") {
     return res.status(400).json({ error: "Command is required" });
   }
 
+  let activeCwd: string;
   try {
-    validateCommandInput(command);
-  } catch (err: any) {
-    return res.status(400).json({ error: err.message });
+    activeCwd = resolveWorkspacePath(cwd || ".");
+  } catch {
+    activeCwd = WORKSPACE_ROOT;
   }
 
-  let resolvedCwd = cwd ? path.resolve(cwd) : process.cwd();
-  const normalizedRoot = TERMINAL_WORKSPACE_ROOT.toLowerCase();
-  const normalizedCwd = resolvedCwd.toLowerCase();
-  const safeCwd = normalizedCwd === normalizedRoot || normalizedCwd.startsWith(normalizedRoot + path.sep)
-    ? resolvedCwd
-    : TERMINAL_WORKSPACE_ROOT;
-
-  if (!fs.existsSync(safeCwd) || !fs.statSync(safeCwd).isDirectory()) {
-    return res.status(400).json({ error: "Invalid working directory." });
-  }
-
-  const marker = "__CWD_SEPARATOR_44fb5948__";
   const sanitizedCommand = sanitizeSensitiveCommand(command.trim());
-
-  // We couple the user command and always print cwd after. Use semicolon to execute cwd even if preceding fails.
-  const fullCommand = `${sanitizedCommand} ; echo "" ; echo "${marker}" ; pwd`;
-
-  try {
-    exec(
-      fullCommand,
-      {
-        cwd: safeCwd,
-        env: { ...process.env, LANG: "en_US.UTF-8" },
-        timeout: Number.isFinite(COMMAND_TIMEOUT_MS) && COMMAND_TIMEOUT_MS > 0 ? COMMAND_TIMEOUT_MS : 30000,
-        maxBuffer: Number.isFinite(COMMAND_MAX_BUFFER) && COMMAND_MAX_BUFFER > 0 ? COMMAND_MAX_BUFFER : 1048576
-      },
-      (error, stdout, stderr) => {
-        try {
-          const stdoutStr = stdout || "";
-          const parts = stdoutStr.split(marker);
-          let commandOutput = parts[0] || "";
-          let finalCwd = parts[1] ? parts[1].trim() : safeCwd;
-
-          commandOutput = commandOutput.replace(/[\r\n]+$/, "");
-          commandOutput = redactSensitiveOutput(commandOutput);
-
-          try {
-            if (!fs.existsSync(finalCwd) || !fs.statSync(finalCwd).isDirectory()) {
-              finalCwd = safeCwd;
-            }
-          } catch {
-            finalCwd = safeCwd;
-          }
-
-          res.json({
-            stdout: commandOutput,
-            stderr: stderr || "",
-            code: error ? (error.code ?? 1) : 0,
-            newCwd: finalCwd
-          });
-        } catch (innerErr: any) {
-          console.error("Terminal callback internal exception:", innerErr);
-          if (!res.headersSent) {
-            res.status(500).json({ error: innerErr.message });
-          }
-        }
+  const cdTarget = parseSimpleCd(sanitizedCommand);
+  if (cdTarget !== null) {
+    try {
+      const nextCwd = resolveWorkspacePath(cdTarget, activeCwd);
+      if (!fs.existsSync(nextCwd) || !fs.statSync(nextCwd).isDirectory()) {
+        return res.json({ stdout: "", stderr: `cd: no such file or directory: ${cdTarget}`, code: 1, newCwd: activeCwd });
       }
-    );
-  } catch (error: any) {
-    console.error("Terminal top-level execute error:", error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: error.message });
+      return res.json({ stdout: "", stderr: "", code: 0, newCwd: nextCwd });
+    } catch {
+      console.warn(`[Sandbox] Blocked cd outside workspace: ${sanitizedCommand}`);
+      return res.json({ stdout: "", stderr: "cd: path is outside the Terminai workspace", code: 1, newCwd: activeCwd });
     }
   }
+
+  if (looksLikeSandboxEscape(sanitizedCommand)) {
+    console.warn(`[Sandbox] Blocked terminal command outside workspace: ${sanitizedCommand}`);
+    return res.status(403).json({
+      stdout: "",
+      stderr: "Command blocked: filesystem access is restricted to the Terminai workspace.",
+      code: 126,
+      newCwd: activeCwd
+    });
+  }
+
+  const fullCommand = `${sanitizedCommand} ; printf '\n${TERMINAL_CWD_MARKER}\n' ; pwd`;
+  const child = spawn("/bin/sh", ["-lc", fullCommand], {
+    cwd: activeCwd,
+    env: { ...process.env, LANG: "en_US.UTF-8", PWD: activeCwd },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+
+  const stdoutChunks: string[] = [];
+  const stderrChunks: string[] = [];
+  const orderedChunks: { stream: "stdout" | "stderr"; text: string }[] = [];
+  const limitState = { bytes: 0, truncated: false };
+  let timedOut = false;
+  const timeoutMs = Number.isFinite(COMMAND_TIMEOUT_MS) && COMMAND_TIMEOUT_MS > 0 ? COMMAND_TIMEOUT_MS : 30000;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    child.kill("SIGTERM");
+    setTimeout(() => { if (!child.killed) child.kill("SIGKILL"); }, 1500).unref();
+  }, timeoutMs);
+
+  child.stdout.on("data", (chunk: Buffer) => {
+    const text = chunk.toString("utf8");
+    const limitedText = appendLimited(stdoutChunks, text, limitState);
+    if (limitedText) orderedChunks.push({ stream: "stdout", text: limitedText });
+  });
+  child.stderr.on("data", (chunk: Buffer) => {
+    const text = chunk.toString("utf8");
+    const limitedText = appendLimited(stderrChunks, text, limitState);
+    if (limitedText) orderedChunks.push({ stream: "stderr", text: limitedText });
+  });
+  child.on("error", (error) => {
+    appendLimited(stderrChunks, `Failed to start command: ${error.message}`, limitState);
+  });
+  child.on("close", (code) => {
+    clearTimeout(timeout);
+    let stdoutText = stdoutChunks.join("");
+    let stderrText = stderrChunks.join("");
+    let finalCwd = activeCwd;
+    const parts = stdoutText.split(TERMINAL_CWD_MARKER);
+    if (parts.length > 1) {
+      stdoutText = parts.slice(0, -1).join(TERMINAL_CWD_MARKER).replace(/[\r\n]+$/, "");
+      const candidate = parts[parts.length - 1].trim().split(/\r?\n/)[0];
+      try {
+        const resolvedCandidate = path.resolve(candidate);
+        if (fs.existsSync(resolvedCandidate) && fs.statSync(resolvedCandidate).isDirectory() && isInsideWorkspace(resolvedCandidate)) {
+          finalCwd = resolvedCandidate;
+        }
+      } catch {
+        finalCwd = activeCwd;
+      }
+    }
+    if (timedOut) stderrText += `${stderrText ? "\n" : ""}Command timed out after ${Math.round(timeoutMs / 1000)} seconds and was terminated.`;
+    res.json({
+      stdout: redactSensitiveOutput(stdoutText),
+      stderr: redactSensitiveOutput(stderrText),
+      output: orderedChunks,
+      code: timedOut ? 124 : (code ?? 1),
+      newCwd: finalCwd,
+      truncated: limitState.truncated,
+      truncationMessage: limitState.truncated ? TERMINAL_OUTPUT_TRUNCATED : undefined
+    });
+  });
 });
 
 function redactSensitiveOutput(text: string): string {
@@ -240,11 +316,12 @@ function sanitizeSensitiveCommand(command: string): string {
 // Local file browser APIs (File Tree explorer)
 app.post("/api/file-manager/list", (req, res) => {
   const { dir } = req.body;
-  const baseDir = process.cwd();
-  const targetDir = dir ? path.resolve(baseDir, dir) : baseDir;
-
-  // Sandbox check to avoid listing outside of dev environment folder if restrictive
-  if (!targetDir.startsWith(baseDir)) {
+  const baseDir = WORKSPACE_ROOT;
+  let targetDir: string;
+  try {
+    targetDir = resolveWorkspacePath(dir || ".");
+  } catch {
+    console.warn(`[Sandbox] Blocked file list outside workspace: ${dir}`);
     return res.status(403).json({ error: "Access Denied: Sandbox escape prevented." });
   }
 
@@ -257,7 +334,7 @@ app.post("/api/file-manager/list", (req, res) => {
       const fullPath = path.join(targetDir, file);
       try {
         const stat = fs.statSync(fullPath);
-        const relativePath = path.relative(baseDir, fullPath);
+        const relativePath = toWorkspaceRelative(fullPath);
         return {
           name: file,
           path: relativePath === "" ? "." : relativePath,
@@ -268,7 +345,7 @@ app.post("/api/file-manager/list", (req, res) => {
       } catch {
         return {
           name: file,
-          path: path.relative(baseDir, fullPath),
+          path: toWorkspaceRelative(fullPath),
           type: "file",
           size: 0,
           mtime: new Date().toISOString()
@@ -277,7 +354,7 @@ app.post("/api/file-manager/list", (req, res) => {
     });
     res.json({
       files: results,
-      currentFolder: path.relative(baseDir, targetDir) || "."
+      currentFolder: toWorkspaceRelative(targetDir)
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -289,10 +366,11 @@ app.post("/api/file-manager/read", (req, res) => {
   const { filePath } = req.body;
   if (!filePath) return res.status(400).json({ error: "File path is required" });
 
-  const baseDir = process.cwd();
-  const resolvedPath = path.resolve(baseDir, filePath);
-
-  if (!resolvedPath.startsWith(baseDir)) {
+  let resolvedPath: string;
+  try {
+    resolvedPath = resolveWorkspacePath(filePath);
+  } catch {
+    console.warn(`[Sandbox] Blocked file read outside workspace: ${filePath}`);
     return res.status(403).json({ error: "Access Denied." });
   }
 
@@ -312,10 +390,11 @@ app.post("/api/file-manager/write", (req, res) => {
   const { filePath, content } = req.body;
   if (!filePath) return res.status(400).json({ error: "File path is required" });
 
-  const baseDir = process.cwd();
-  const resolvedPath = path.resolve(baseDir, filePath);
-
-  if (!resolvedPath.startsWith(baseDir)) {
+  let resolvedPath: string;
+  try {
+    resolvedPath = resolveWorkspacePath(filePath);
+  } catch {
+    console.warn(`[Sandbox] Blocked file write outside workspace: ${filePath}`);
     return res.status(403).json({ error: "Access Denied." });
   }
 
@@ -336,10 +415,12 @@ app.post("/api/file-manager/delete", (req, res) => {
   const { targetPath } = req.body;
   if (!targetPath) return res.status(400).json({ error: "Path is required" });
 
-  const baseDir = process.cwd();
-  const resolvedPath = path.resolve(baseDir, targetPath);
-
-  if (!resolvedPath.startsWith(baseDir) || resolvedPath === baseDir) {
+  let resolvedPath: string;
+  try {
+    resolvedPath = resolveWorkspacePath(targetPath);
+    if (resolvedPath === WORKSPACE_ROOT) throw new Error("Cannot delete workspace root");
+  } catch {
+    console.warn(`[Sandbox] Blocked delete outside workspace/root: ${targetPath}`);
     return res.status(403).json({ error: "Access Denied: Deletion restricted." });
   }
 
@@ -365,11 +446,13 @@ app.post("/api/file-manager/create-folder", (req, res) => {
   const { dirPath, name } = req.body;
   if (!name) return res.status(400).json({ error: "Folder name is required" });
 
-  const baseDir = process.cwd();
-  const parentFolder = dirPath ? path.resolve(baseDir, dirPath) : baseDir;
-  const targetFolder = path.join(parentFolder, name);
-
-  if (!targetFolder.startsWith(baseDir)) {
+  let parentFolder: string;
+  let targetFolder: string;
+  try {
+    parentFolder = resolveWorkspacePath(dirPath || ".");
+    targetFolder = resolveWorkspacePath(name, parentFolder);
+  } catch {
+    console.warn(`[Sandbox] Blocked folder create outside workspace: ${dirPath}/${name}`);
     return res.status(403).json({ error: "Access Denied." });
   }
 
@@ -387,7 +470,7 @@ app.post("/api/file-manager/create-folder", (req, res) => {
 
 // Package manager helper - Query native installations of standard development CLI tools
 app.get("/api/package-manager/list", (req, res) => {
-  const baseDir = process.env.TERMINAI_WORKSPACE_ROOT || process.cwd();
+  const baseDir = WORKSPACE_ROOT;
   const manifestPath = path.join(baseDir, "runtime", "package-baseline.json");
 
   let tools: any[] = [];
@@ -500,7 +583,7 @@ function sanitizePackageName(name: string): string {
 }
 
 app.get("/api/package-manager/baseline", (_req, res) => {
-  const baseDir = process.env.TERMINAI_WORKSPACE_ROOT || process.cwd();
+  const baseDir = WORKSPACE_ROOT;
   const manifestPath = path.join(baseDir, "runtime", "package-baseline.json");
   try {
     if (!fs.existsSync(manifestPath)) {
@@ -519,7 +602,7 @@ app.post("/api/package-manager/install", (req, res) => {
     return res.status(400).json({ error: "packageIds array is required." });
   }
 
-  const baseDir = process.env.TERMINAI_WORKSPACE_ROOT || process.cwd();
+  const baseDir = WORKSPACE_ROOT;
   const manifestPath = path.join(baseDir, "runtime", "package-baseline.json");
 
   let packages: any[] = [];
@@ -806,7 +889,7 @@ app.get("/api/runtime/api/status", (_req, res) => {
 
 const API_BRIDGE_CONTRACT_PATH = path.resolve(__dirname, "runtime", "api-bridge-contract.json");
 const API_AUDIT_LOG_PATH = path.resolve(
-  process.env.TERMINAI_WORKSPACE_ROOT || process.cwd(),
+  WORKSPACE_ROOT,
   "terminai_api_audit.jsonl"
 );
 
@@ -912,7 +995,7 @@ function handleNotificationSend(payload: any): any {
 
 function handleStorageStatus(): any {
   return {
-    workspaceRoot: process.env.TERMINAI_WORKSPACE_ROOT || process.cwd(),
+    workspaceRoot: WORKSPACE_ROOT,
     runtimeRoot: getRuntimeRoot(),
     source: "available",
   };
@@ -1097,7 +1180,7 @@ app.post("/api/runtime/api/invoke", (req, res) => {
 // -------------------------------------------------------
 
 const RUNTIME_STATE_PATH = path.resolve(
-  process.env.TERMINAI_WORKSPACE_ROOT || process.cwd(),
+  WORKSPACE_ROOT,
   "terminai_runtime_state.json"
 );
 
@@ -1381,7 +1464,7 @@ function checkRuntimeBundleStatus(): any {
   return {
     bundle,
     runtimeRoot,
-    workspaceRoot: process.env.TERMINAI_WORKSPACE_ROOT || process.cwd(),
+    workspaceRoot: WORKSPACE_ROOT,
     mode,
     bundleReady,
     assets: {
@@ -1569,7 +1652,7 @@ let deviceSettings = {
 };
 
 app.get("/api/device/build-status", (req, res) => {
-  const baseDir = process.env.TERMINAI_WORKSPACE_ROOT || process.cwd();
+  const baseDir = WORKSPACE_ROOT;
   const telemetryPath = path.join(baseDir, "terminai_telemetry.json");
 
   let telemetryData = {
@@ -1611,7 +1694,7 @@ app.get("/api/device/build-status", (req, res) => {
 });
 
 app.post("/api/device/build-status", (req, res) => {
-  const baseDir = process.env.TERMINAI_WORKSPACE_ROOT || process.cwd();
+  const baseDir = WORKSPACE_ROOT;
   const telemetryPath = path.join(baseDir, "terminai_telemetry.json");
   const { telemetry, device } = req.body;
 
