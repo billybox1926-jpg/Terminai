@@ -282,7 +282,7 @@ export default function App() {
       // Append standard answers
       if (Array.isArray(data.output) && data.output.length > 0) {
         data.output.forEach((chunk: { stream: "stdout" | "stderr"; text: string }) => {
-          const cleanText = chunk.text.replace(/__CWD_SEPARATOR_44fb5948__[\s\S]*$/, "").trimEnd();
+          const cleanText = chunk.text.replace(/\u001eTERMINAI_CWD_44fb5948\u001e[\s\S]*$/, "").trimEnd();
           if (cleanText.trim()) {
             payloadLines.push({
               id: Math.random().toString(),
@@ -299,6 +299,15 @@ export default function App() {
         if (data.stderr && data.stderr.trim()) {
           payloadLines.push({ id: Math.random().toString(), type: "stderr", text: data.stderr, timestamp });
         }
+      }
+
+      if (data.truncated) {
+        payloadLines.push({
+          id: Math.random().toString(),
+          type: "info",
+          text: data.truncationMessage || "... (output truncated)",
+          timestamp: timestamp
+        });
       }
 
       // Append exit status descriptors

@@ -20,7 +20,8 @@ const PORT = Number.parseInt(process.env.PORT ?? "3000", 10);
 const COMMAND_TIMEOUT_MS = Number.parseInt(process.env.TERMINAI_COMMAND_TIMEOUT_MS ?? "30000", 10);
 const COMMAND_MAX_BUFFER = Number.parseInt(process.env.TERMINAI_COMMAND_MAX_BUFFER ?? "1048576", 10);
 const WORKSPACE_ROOT = path.resolve(process.env.TERMINAI_WORKSPACE_ROOT || process.cwd());
-const TERMINAL_OUTPUT_TRUNCATED = "\n... (output truncated)";
+const TERMINAL_CWD_MARKER = "\u001eTERMINAI_CWD_44fb5948\u001e";
+const TERMINAL_OUTPUT_TRUNCATED = "... (output truncated)";
 
 // Body parser
 app.use(express.json());
@@ -69,14 +70,19 @@ function toWorkspaceRelative(targetPath: string): string {
   return relative === "" ? "." : relative;
 }
 
-function appendLimited(chunks: string[], text: string, state: { bytes: number; truncated: boolean }): void {
-  if (!text || state.truncated) return;
+function appendLimited(chunks: string[], text: string, state: { bytes: number; truncated: boolean }): string {
+  if (!text || state.truncated) return "";
   const remaining = COMMAND_MAX_BUFFER - state.bytes;
-  if (remaining <= 0) { state.truncated = true; return; }
+  if (remaining <= 0) {
+    state.truncated = true;
+    return "";
+  }
   const slice = text.slice(0, remaining);
-  chunks.push(redactSensitiveOutput(slice));
+  const redactedSlice = redactSensitiveOutput(slice);
+  chunks.push(redactedSlice);
   state.bytes += slice.length;
   if (slice.length < text.length) state.truncated = true;
+  return redactedSlice;
 }
 
 
@@ -216,11 +222,10 @@ app.post("/api/terminal/execute", (req, res) => {
     });
   }
 
-  const marker = "__CWD_SEPARATOR_44fb5948__";
-  const fullCommand = `${sanitizedCommand} ; printf '\n${marker}\n' ; pwd`;
+  const fullCommand = `${sanitizedCommand} ; printf '\n${TERMINAL_CWD_MARKER}\n' ; pwd`;
   const child = spawn("/bin/sh", ["-lc", fullCommand], {
     cwd: activeCwd,
-    env: { ...process.env, LANG: "en_US.UTF-8", HOME: WORKSPACE_ROOT, PWD: activeCwd },
+    env: { ...process.env, LANG: "en_US.UTF-8", PWD: activeCwd },
     stdio: ["ignore", "pipe", "pipe"]
   });
 
@@ -238,13 +243,13 @@ app.post("/api/terminal/execute", (req, res) => {
 
   child.stdout.on("data", (chunk: Buffer) => {
     const text = chunk.toString("utf8");
-    appendLimited(stdoutChunks, text, limitState);
-    orderedChunks.push({ stream: "stdout", text: redactSensitiveOutput(text) });
+    const limitedText = appendLimited(stdoutChunks, text, limitState);
+    if (limitedText) orderedChunks.push({ stream: "stdout", text: limitedText });
   });
   child.stderr.on("data", (chunk: Buffer) => {
     const text = chunk.toString("utf8");
-    appendLimited(stderrChunks, text, limitState);
-    orderedChunks.push({ stream: "stderr", text: redactSensitiveOutput(text) });
+    const limitedText = appendLimited(stderrChunks, text, limitState);
+    if (limitedText) orderedChunks.push({ stream: "stderr", text: limitedText });
   });
   child.on("error", (error) => {
     appendLimited(stderrChunks, `Failed to start command: ${error.message}`, limitState);
@@ -254,9 +259,9 @@ app.post("/api/terminal/execute", (req, res) => {
     let stdoutText = stdoutChunks.join("");
     let stderrText = stderrChunks.join("");
     let finalCwd = activeCwd;
-    const parts = stdoutText.split(marker);
+    const parts = stdoutText.split(TERMINAL_CWD_MARKER);
     if (parts.length > 1) {
-      stdoutText = parts.slice(0, -1).join(marker).replace(/[\r\n]+$/, "");
+      stdoutText = parts.slice(0, -1).join(TERMINAL_CWD_MARKER).replace(/[\r\n]+$/, "");
       const candidate = parts[parts.length - 1].trim().split(/\r?\n/)[0];
       try {
         const resolvedCandidate = path.resolve(candidate);
@@ -268,13 +273,14 @@ app.post("/api/terminal/execute", (req, res) => {
       }
     }
     if (timedOut) stderrText += `${stderrText ? "\n" : ""}Command timed out after ${Math.round(timeoutMs / 1000)} seconds and was terminated.`;
-    if (limitState.truncated) stderrText += `${stderrText ? "\n" : ""}${TERMINAL_OUTPUT_TRUNCATED.trim()}`;
     res.json({
       stdout: redactSensitiveOutput(stdoutText),
       stderr: redactSensitiveOutput(stderrText),
       output: orderedChunks,
       code: timedOut ? 124 : (code ?? 1),
-      newCwd: finalCwd
+      newCwd: finalCwd,
+      truncated: limitState.truncated,
+      truncationMessage: limitState.truncated ? TERMINAL_OUTPUT_TRUNCATED : undefined
     });
   });
 });
