@@ -21,4 +21,11 @@
     <string name="label_api_bridge">API Bridge</string>
     <string name="label_integrity">Integrity</string>
     <string name="label_first_run">First Run</string>
+    <string name="dashboard_title">TerminAI Dashboard</string>
+    <string name="dashboard_refresh">Refresh</string>
+    <string name="dashboard_stale_banner">Showing cached data. Refresh failed.</string>
+    <string name="dashboard_error_offline">Runtime Unavailable</string>
+    <string name="dashboard_error_generic">Dashboard Error</string>
+    <string name="dashboard_retry">Retry</string>
+    <string name="dashboard_back">Go Back</string>
 </resources>

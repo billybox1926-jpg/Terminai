@@ -43,5 +43,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".dashboard.DashboardActivity"
+            android:exported="false"
+            android:label="Dashboard"
+            android:theme="@style/Theme.TerminAI" />
+
     </application>
 </manifest>

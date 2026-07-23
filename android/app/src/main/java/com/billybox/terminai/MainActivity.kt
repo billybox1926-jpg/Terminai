@@ -11,6 +11,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.billybox.terminai.api.TerminaiApiBridge
+import com.billybox.terminai.dashboard.DashboardActivity
 import com.billybox.terminai.runtime.RuntimeManager
 import com.billybox.terminai.runtime.RuntimeBundleVerifier
 import org.json.JSONObject
@@ -247,10 +248,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openDashboard() {
-        showDialog(
-            "Dashboard",
-            "Dashboard integration coming soon.\n\nFor now, this native app proves the app-owned runtime, workspace, state, and API bridge status."
-        )
+        startActivity(Intent(this, DashboardActivity::class.java))
     }
 
     private fun showDialog(title: String, message: String) {
