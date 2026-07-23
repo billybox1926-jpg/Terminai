@@ -11,18 +11,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -43,7 +41,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -477,7 +474,7 @@ private fun ErrorFallbackScreen(
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
-            if (isOffline) Icons.Default.WifiOff else Icons.Default.Error,
+            if (isOffline) Icons.Filled.WifiOff else Icons.Default.Error,
             contentDescription = null,
             tint = if (isOffline) TerminaiColors.Warning else TerminaiColors.Error,
             modifier = Modifier.size(64.dp)
@@ -520,7 +517,3 @@ private fun formatBytes(bytes: Long): String {
     if (bytes < 1024 * 1024) return "${"%.1f".format(bytes / 1024.0)} KB"
     return "${"%.1f".format(bytes / (1024.0 * 1024.0))} MB"
 }
-
-// WifiOff icon alias (material-icons-extended includes it)
-private val Icons.Default.WifiOff
-    get() = Icons.Filled.WifiOff
