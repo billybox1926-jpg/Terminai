@@ -184,6 +184,20 @@ app.get("/api/system/stats", (req, res) => {
 });
 
 // Secure Real Terminal Command Executor with Smart Directory Tracking
+const TERMINAL_WORKSPACE_ROOT = path.resolve(process.env.TERMINAI_WORKSPACE_ROOT || process.cwd());
+
+function validateCommandInput(command: string): void {
+  const trimmed = command.trim();
+  if (!trimmed) {
+    throw new Error("Command is required.");
+  }
+  if (trimmed.length > 2000) {
+    throw new Error("Command exceeds maximum allowed length.");
+  }
+  if (/[`$]\(/.test(trimmed)) {
+    throw new Error("Command contains unsupported shell expansion syntax.");
+  }
+}
 app.post("/api/terminal/execute", (req, res) => {
   const { command, cwd } = req.body as { command?: string; cwd?: string };
   if (!command || typeof command !== "string") {
