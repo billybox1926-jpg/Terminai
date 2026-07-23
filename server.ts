@@ -131,16 +131,45 @@ app.get("/api/system/stats", (req, res) => {
 });
 
 // Secure Real Terminal Command Executor with Smart Directory Tracking
+const TERMINAL_WORKSPACE_ROOT = path.resolve(process.env.TERMINAI_WORKSPACE_ROOT || process.cwd());
+
+function validateCommandInput(command: string): void {
+  const trimmed = command.trim();
+  if (!trimmed) {
+    throw new Error("Command is required.");
+  }
+  if (trimmed.length > 2000) {
+    throw new Error("Command exceeds maximum allowed length.");
+  }
+  if (/[`$]\(/.test(trimmed)) {
+    throw new Error("Command contains unsupported shell expansion syntax.");
+  }
+}
 app.post("/api/terminal/execute", (req, res) => {
   const { command, cwd } = req.body;
   if (!command) {
     return res.status(400).json({ error: "Command is required" });
   }
 
-  const activeCwd = cwd || process.cwd();
-  const marker = "__CWD_SEPARATOR_44fb5948__";
+  try {
+    validateCommandInput(command);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
 
-  const sanitizedCommand = sanitizeSensitiveCommand(command || "");
+  let resolvedCwd = cwd ? path.resolve(cwd) : process.cwd();
+  const normalizedRoot = TERMINAL_WORKSPACE_ROOT.toLowerCase();
+  const normalizedCwd = resolvedCwd.toLowerCase();
+  const safeCwd = normalizedCwd === normalizedRoot || normalizedCwd.startsWith(normalizedRoot + path.sep)
+    ? resolvedCwd
+    : TERMINAL_WORKSPACE_ROOT;
+
+  if (!fs.existsSync(safeCwd) || !fs.statSync(safeCwd).isDirectory()) {
+    return res.status(400).json({ error: "Invalid working directory." });
+  }
+
+  const marker = "__CWD_SEPARATOR_44fb5948__";
+  const sanitizedCommand = sanitizeSensitiveCommand(command.trim());
 
   // We couple the user command and always print cwd after. Use semicolon to execute cwd even if preceding fails.
   const fullCommand = `${sanitizedCommand} ; echo "" ; echo "${marker}" ; pwd`;
@@ -149,7 +178,7 @@ app.post("/api/terminal/execute", (req, res) => {
     exec(
       fullCommand,
       {
-        cwd: activeCwd,
+        cwd: safeCwd,
         env: { ...process.env, LANG: "en_US.UTF-8" },
         timeout: Number.isFinite(COMMAND_TIMEOUT_MS) && COMMAND_TIMEOUT_MS > 0 ? COMMAND_TIMEOUT_MS : 30000,
         maxBuffer: Number.isFinite(COMMAND_MAX_BUFFER) && COMMAND_MAX_BUFFER > 0 ? COMMAND_MAX_BUFFER : 1048576
@@ -159,17 +188,17 @@ app.post("/api/terminal/execute", (req, res) => {
           const stdoutStr = stdout || "";
           const parts = stdoutStr.split(marker);
           let commandOutput = parts[0] || "";
-          let finalCwd = parts[1] ? parts[1].trim() : activeCwd;
+          let finalCwd = parts[1] ? parts[1].trim() : safeCwd;
 
           commandOutput = commandOutput.replace(/[\r\n]+$/, "");
           commandOutput = redactSensitiveOutput(commandOutput);
 
           try {
             if (!fs.existsSync(finalCwd) || !fs.statSync(finalCwd).isDirectory()) {
-              finalCwd = activeCwd;
+              finalCwd = safeCwd;
             }
           } catch {
-            finalCwd = activeCwd;
+            finalCwd = safeCwd;
           }
 
           res.json({
