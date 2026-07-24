@@ -2,7 +2,7 @@
 // One app. One dashboard. One runtime.
 
 buildscript {
-    ext.kotlin_version = '1.9.22'
+    ext.kotlin_version = '1.9.24'
     repositories {
         google()
         mavenCentral()
