@@ -59,8 +59,7 @@ function applyAuth(method: string, path: string, handler: express.RequestHandler
   return appAny[method](path, authMiddleware, handler);
 }
 
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok" });
+app.get("/api/system/stats", (req, res) => {
 });
 
 // Lazy-loaded Gemini Client following guidance
