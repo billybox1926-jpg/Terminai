@@ -88,8 +88,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          chmod +x ../scripts/android-install-smoke.sh
-          ../scripts/android-install-smoke.sh || {
+          chmod +x scripts/android-install-smoke.sh
+          scripts/android-install-smoke.sh || {
             echo "❌ Android APK install smoke failed."
             echo "Remediation:"
             echo "  - Verify Android SDK/build-tools installation"
