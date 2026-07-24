@@ -130,6 +130,32 @@ function resolveWorkspacePath(inputPath: string | undefined, cwd = WORKSPACE_ROO
   return resolved;
 }
 
+function resolveWorkspacePathStrict(inputPath: string | undefined, cwd = WORKSPACE_ROOT): string {
+  const base = isInsideWorkspace(cwd) ? path.resolve(cwd) : WORKSPACE_ROOT;
+  const resolved = inputPath ? path.resolve(base, inputPath) : base;
+  if (!isInsideWorkspace(resolved)) {
+    throw new Error("Access denied: path is outside the Terminai workspace.");
+  }
+
+  try {
+    const real = fs.realpathSync(resolved);
+    const realRoot = fs.realpathSync(base);
+    if (!isInsideWorkspace(real)) {
+      throw new Error("Access denied: path is outside the Terminai workspace.");
+    }
+    return real;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | null)?.code === "ENOENT") {
+      const parent = path.dirname(resolved);
+      if (!isInsideWorkspace(parent)) {
+        throw new Error("Access denied: path is outside the Terminai workspace.");
+      }
+      return resolved;
+    }
+    throw error;
+  }
+}
+
 /** Converts an absolute workspace path into the relative path used by frontend file APIs. */
 function toWorkspaceRelative(targetPath: string): string {
   const relative = path.relative(WORKSPACE_ROOT, targetPath);
@@ -251,18 +277,159 @@ app.get("/api/system/stats", (req, res) => {
 
 // Secure Real Terminal Command Executor with Smart Directory Tracking
 const TERMINAL_WORKSPACE_ROOT = path.resolve(process.env.TERMINAI_WORKSPACE_ROOT || process.cwd());
+const DEFAULT_ALLOWED_COMMANDS = new Set([
+  'ls','dir','tree','cat','head','tail','less','more','find',
+  'cd','pwd',
+  'echo','grep','sed','awk','cut','sort','uniq','wc',
+  'whoami','hostname','uptime','date','cal','df','du','free',
+  'node','npm','npx','python','python3','pip','pip3',
+  'git','curl','wget','unzip','tar','gzip','gunzip',
+  'make','gcc','clang','javac','java','bash','sh','zsh','termux-info'
+]);
 
-function validateCommandInput(command: string): void {
+function getAllowedCommands(): Set<string> {
+  const raw = process.env.TERMINAI_ALLOWED_COMMANDS;
+  if (!raw) return DEFAULT_ALLOWED_COMMANDS;
+  const out = new Set<string>();
+  for (const item of raw.split(',')) {
+    const cmd = item.trim();
+    if (cmd) out.add(cmd);
+  }
+  return out;
+}
+
+function validateCommandInput(command: string): string[] {
   const trimmed = command.trim();
   if (!trimmed) {
-    throw new Error("Command is required.");
+    throw new Error('Command is required.');
   }
   if (trimmed.length > 2000) {
-    throw new Error("Command exceeds maximum allowed length.");
+    throw new Error('Command exceeds maximum allowed length.');
   }
   if (/[`$]\(/.test(trimmed)) {
-    throw new Error("Command contains unsupported shell expansion syntax.");
+    throw new Error('Command contains unsupported shell expansion syntax.');
   }
+  const tokens = tokenizeCommand(trimmed);
+  if (tokens.length === 0) {
+    throw new Error('Command could not be parsed.');
+  }
+  return tokens;
+}
+
+function tokenizeCommand(input: string): string[] {
+  const tokens: string[] = [];
+  let current = '';
+  let inSingle = false;
+  let inDouble = false;
+  let escape = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+
+    if (escape) {
+      current += char;
+      escape = false;
+      continue;
+    }
+
+    if (char === '\\' && !inSingle) {
+      escape = true;
+      continue;
+    }
+
+    if (char === "'" && !inDouble) {
+      inSingle = !inSingle;
+      current += char;
+      continue;
+    }
+
+    if (char === '"' && !inSingle) {
+      inDouble = !inDouble;
+      current += char;
+      continue;
+    }
+
+    if (char === ' ' && !inSingle && !inDouble) {
+      if (current.length > 0) tokens.push(current);
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.length > 0) tokens.push(current);
+  return tokens;
+}
+
+function parseShellMetaOutsideQuotes(input: string): { valid: boolean; reason?: string } {
+  let inSingle = false;
+  let inDouble = false;
+  let escape = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+
+    if (escape) {
+      escape = false;
+      continue;
+    }
+
+    if (char === '\\' && !inSingle) {
+      escape = true;
+      continue;
+    }
+
+    if (char === "'" && !inDouble) {
+      inSingle = !inSingle;
+      continue;
+    }
+
+    if (char === '"' && !inSingle) {
+      inDouble = !inDouble;
+      continue;
+    }
+
+    if (!inSingle && !inDouble) {
+      if (';|&<>'.includes(char)) {
+        return { valid: false, reason: 'Command contains unsupported shell meta-character outside quotes.' };
+      }
+      if (char === '$' && input[i + 1] === '(') {
+        return { valid: false, reason: 'Command contains unsupported shell expansion syntax.' };
+      }
+      if (char === '`') {
+        return { valid: false, reason: 'Command contains unsupported shell expansion syntax.' };
+      }
+    }
+  }
+
+  return { valid: true };
+}
+
+function resolveCommandExecution(commandRaw: string, activeCwd: string) {
+  const tokens = validateCommandInput(sanitizeSensitiveCommand(commandRaw));
+  const commandName = tokens[0];
+  const baseName = path.basename(commandName).toLowerCase();
+
+  if (baseName === 'cd') {
+    const target = tokens[1] ?? '.';
+    const resolved = resolveWorkspacePath(target, activeCwd);
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+      return { kind: 'cd', ok: false as const, stderr: `cd: no such file or directory: ${target}`, code: 1, nextCwd: activeCwd };
+    }
+    if (!isInsideWorkspace(resolved)) {
+      return { kind: 'cd', ok: false as const, stderr: 'cd: path is outside the Terminai workspace', code: 1, nextCwd: activeCwd };
+    }
+    return { kind: 'cd', ok: true as const, code: 0, nextCwd: resolved };
+  }
+
+  if (!getAllowedCommands().has(baseName)) {
+    return { kind: 'error', reason: `Command "${baseName}" is not allowed.` } as const;
+  }
+
+  let blocked = true;
+
+  return { kind: 'exec', command: commandName, args: tokens.slice(1), blocked } as const;
 }
 app.post("/api/terminal/execute", (req, res) => {
   const { command, cwd } = req.body as { command?: string; cwd?: string };
@@ -302,9 +469,39 @@ app.post("/api/terminal/execute", (req, res) => {
     });
   }
 
-  const fullCommand = `${sanitizedCommand} ; printf '\n${TERMINAL_CWD_MARKER}\n' ; pwd`;
-  const child = spawn("/bin/sh", ["-lc", fullCommand], {
+  const meta = parseShellMetaOutsideQuotes(sanitizedCommand);
+  if (!meta.valid) {
+    return res.status(400).json({
+      stdout: "",
+      stderr: meta.reason,
+      code: 126,
+      newCwd: activeCwd
+    });
+  }
+
+  const execution = resolveCommandExecution(sanitizedCommand, activeCwd);
+
+  if (execution.kind === 'cd') {
+    return res.json({
+      stdout: execution.ok ? "" : `cd: ${execution.stderr}`,
+      stderr: execution.ok ? "" : "",
+      code: execution.code,
+      newCwd: execution.nextCwd
+    });
+  }
+
+  if (execution.kind === 'error') {
+    return res.status(400).json({
+      stdout: "",
+      stderr: execution.reason,
+      code: 126,
+      newCwd: activeCwd
+    });
+  }
+
+  const child = spawn(execution.command, execution.args, {
     cwd: activeCwd,
+    shell: false,
     env: { ...process.env, LANG: "en_US.UTF-8", PWD: activeCwd },
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -382,10 +579,14 @@ function sanitizeSensitiveCommand(command: string): string {
 // Local file browser APIs (File Tree explorer)
 app.post("/api/file-manager/list", (req, res) => {
   const { dir } = req.body;
+  if (typeof dir === "string" && dir.includes("\0")) {
+    return res.status(400).json({ error: "Invalid path" });
+  }
+
   const baseDir = WORKSPACE_ROOT;
   let targetDir: string;
   try {
-    targetDir = resolveWorkspacePath(dir || ".");
+    targetDir = resolveWorkspacePathStrict(dir || ".", baseDir);
   } catch {
     console.warn(`[Sandbox] Blocked file list outside workspace: ${dir}`);
     return res.status(403).json({ error: "Access Denied: Sandbox escape prevented." });
@@ -430,11 +631,13 @@ app.post("/api/file-manager/list", (req, res) => {
 // File reader
 app.post("/api/file-manager/read", (req, res) => {
   const { filePath } = req.body;
-  if (!filePath) return res.status(400).json({ error: "File path is required" });
+  if (!filePath || typeof filePath !== "string" || filePath.includes("\0")) {
+    return res.status(400).json({ error: "File path is required" });
+  }
 
   let resolvedPath: string;
   try {
-    resolvedPath = resolveWorkspacePath(filePath);
+    resolvedPath = resolveWorkspacePathStrict(filePath);
   } catch {
     console.warn(`[Sandbox] Blocked file read outside workspace: ${filePath}`);
     return res.status(403).json({ error: "Access Denied." });
@@ -454,11 +657,13 @@ app.post("/api/file-manager/read", (req, res) => {
 // File writer
 app.post("/api/file-manager/write", (req, res) => {
   const { filePath, content } = req.body;
-  if (!filePath) return res.status(400).json({ error: "File path is required" });
+  if (!filePath || typeof filePath !== "string" || filePath.includes("\0")) {
+    return res.status(400).json({ error: "File path is required" });
+  }
 
   let resolvedPath: string;
   try {
-    resolvedPath = resolveWorkspacePath(filePath);
+    resolvedPath = resolveWorkspacePathStrict(filePath);
   } catch {
     console.warn(`[Sandbox] Blocked file write outside workspace: ${filePath}`);
     return res.status(403).json({ error: "Access Denied." });
@@ -479,11 +684,13 @@ app.post("/api/file-manager/write", (req, res) => {
 // File/Folder deleter
 app.post("/api/file-manager/delete", (req, res) => {
   const { targetPath } = req.body;
-  if (!targetPath) return res.status(400).json({ error: "Path is required" });
+  if (!targetPath || typeof targetPath !== "string" || targetPath.includes("\0")) {
+    return res.status(400).json({ error: "Path is required" });
+  }
 
   let resolvedPath: string;
   try {
-    resolvedPath = resolveWorkspacePath(targetPath);
+    resolvedPath = resolveWorkspacePathStrict(targetPath);
     if (resolvedPath === WORKSPACE_ROOT) throw new Error("Cannot delete workspace root");
   } catch {
     console.warn(`[Sandbox] Blocked delete outside workspace/root: ${targetPath}`);
@@ -510,13 +717,18 @@ app.post("/api/file-manager/delete", (req, res) => {
 // Folder creator
 app.post("/api/file-manager/create-folder", (req, res) => {
   const { dirPath, name } = req.body;
-  if (!name) return res.status(400).json({ error: "Folder name is required" });
+  if (!name || typeof name !== "string") {
+    return res.status(400).json({ error: "Folder name is required" });
+  }
+  if ((dirPath && typeof dirPath === "string" && dirPath.includes("\0")) || name.includes("\0")) {
+    return res.status(400).json({ error: "Invalid path" });
+  }
 
   let parentFolder: string;
   let targetFolder: string;
   try {
-    parentFolder = resolveWorkspacePath(dirPath || ".");
-    targetFolder = resolveWorkspacePath(name, parentFolder);
+    parentFolder = resolveWorkspacePathStrict(dirPath || ".");
+    targetFolder = resolveWorkspacePathStrict(name, parentFolder);
   } catch {
     console.warn(`[Sandbox] Blocked folder create outside workspace: ${dirPath}/${name}`);
     return res.status(403).json({ error: "Access Denied." });
