@@ -20,6 +20,11 @@ const PORT = Number.parseInt(process.env.PORT ?? "3000", 10);
 const HOST = process.env.TERMINAI_BIND_ADDRESS ?? "127.0.0.1";
 const COMMAND_TIMEOUT_MS = Number.parseInt(process.env.TERMINAI_COMMAND_TIMEOUT_MS ?? "30000", 10);
 const COMMAND_MAX_BUFFER = Number.parseInt(process.env.TERMINAI_COMMAND_MAX_BUFFER ?? "1048576", 10);
+
+function getCommandTimeoutMs(): number {
+  const envTimeout = Number.parseInt(process.env.TERMINAI_COMMAND_TIMEOUT_MS ?? "", 10);
+  return Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : COMMAND_TIMEOUT_MS;
+}
 const WORKSPACE_ROOT = path.resolve(process.env.TERMINAI_WORKSPACE_ROOT || process.cwd());
 const TERMINAL_CWD_MARKER = "\u001eTERMINAI_CWD_44fb5948\u001e";
 const TERMINAL_OUTPUT_TRUNCATED = "... (output truncated)";
@@ -511,7 +516,7 @@ app.post("/api/terminal/execute", (req, res) => {
   const orderedChunks: { stream: "stdout" | "stderr"; text: string }[] = [];
   const limitState = { bytes: 0, truncated: false };
   let timedOut = false;
-  const timeoutMs = Number.isFinite(COMMAND_TIMEOUT_MS) && COMMAND_TIMEOUT_MS > 0 ? COMMAND_TIMEOUT_MS : 30000;
+  const timeoutMs = getCommandTimeoutMs();
   const timeout = setTimeout(() => {
     timedOut = true;
     child.kill("SIGTERM");

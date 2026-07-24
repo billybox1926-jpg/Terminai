@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          PORT=3099 npm run start > server.log 2>&1 &
+          PORT=3099 TERMINAI_COMMAND_TIMEOUT_MS=100 npm run start > server.log 2>&1 &
           SERVER_PID=$!
           trap 'kill ${SERVER_PID} 2>/dev/null || true' EXIT
           for attempt in {1..60}; do
