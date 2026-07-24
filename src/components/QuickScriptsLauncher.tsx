@@ -148,7 +148,7 @@ export const QuickScriptsLauncher: React.FC<QuickScriptsLauncherProps> = ({
                 </button>
                 <button
                   onClick={() => setInspectingScript(null)}
-                  className="bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold py-2 px-4.5 rounded-md transition text-[10px] cursor-pointer"
+                  className="bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold py-2 px-5 rounded-md transition text-[10px] cursor-pointer"
                 >
                   Done
                 </button>

@@ -60,9 +60,44 @@ TerminAI should absorb the useful parts of Termux:API as an internal module, not
 ## Important safety note
 TerminAI can execute local shell commands and edit files in its configured workspace. Treat it like a local developer console, not a public web app.
 
-Do not expose the running server directly to the public internet unless you add authentication, authorization, transport security, and a stricter execution policy.
-
 By default, file operations should stay scoped to the workspace root. You can set that root explicitly with `TERMINAI_WORKSPACE_ROOT`.
+
+## Authentication
+API auth is opt-in via environment variables; when unset, requests remain unrestricted on localhost.
+
+Configure it with:
+```env
+TERMINAI_API_KEY=your-secret-key
+TERMINAI_AUTH_HEADER=x-api-key
+```
+
+Supported request patterns:
+```bash
+curl -H "X-API-Key: your-secret-key" http://localhost:3000/api/health
+curl -H "Authorization: Bearer your-secret-key" http://localhost:3000/api/health
+```
+
+`/api/health` stays public even when auth is enabled. Unauthenticated or invalid requests return `401`; the server defaults to `127.0.0.1` and only binds externally if `TERMINAI_BIND_ADDRESS=0.0.0.0`.
+
+## Project status
+
+TerminAI has three main surfaces: web frontend, backend server, and native Android host. Their maturity differs.
+
+| Surface | What’s ready | What’s still evolving |
+|---|---|---|
+| Web frontend (`src/`) | Terminal, dashboard, file editor/manager UI, package UI | AI feature polish and usage continuity |
+| Backend (`server.ts`) | Execution, workspace-scoped file APIs, runtime/bootstrap endpoints | Authentication (#33), hardened network exposure controls |
+| Native Android (`android/`) | Compose dashboard scaffold, runtime/workspace state, simulated API bridge | Native terminal execution, real API permissions, full dashboard parity |
+
+## Ownership
+
+| Owner | Responsibilities |
+|---|---|
+| Web frontend | Terminal UI, dashboard views, quick scripts, package UI |
+| Backend server | Command execution, file manager/runtime APIs, security boundaries |
+| Native Android host | App shell, dashboard/runtime state, API bridge adapter, permissions |
+
+In short: the backend is the source of truth for execution and filesystem state. The web UI and native host are two frontends against that same logic; native is still a work-in-progress alongside the web UI.
 
 ## Local setup
 Requirements:
@@ -199,6 +234,7 @@ See `docs/native-runtime-bootstrap.md` for the full native Android locked-and-lo
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `PORT` | No | Server port. Defaults to `3000`. |
+| `TERMINAI_BIND_ADDRESS` | No | Bind address. Defaults to `127.0.0.1` for localhost-only access. Set to `0.0.0.0` only if you intentionally expose the server on your local network. |
 | `TERMINAI_WORKSPACE_ROOT` | No | Root directory exposed to the terminal/file APIs. Defaults to the repo working directory. |
 | `TERMINAI_COMMAND_TIMEOUT_MS` | No | Command execution timeout. Defaults to `30000`. |
 | `TERMINAI_COMMAND_MAX_BUFFER` | No | Max command output buffer. Defaults to `1048576`. |

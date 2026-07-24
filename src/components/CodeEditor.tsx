@@ -86,18 +86,31 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     setStatus("modified");
   };
 
+  const getActionLabelForFile = (path: string) => {
+    const ext = path.split('.').pop()?.toLowerCase();
+    if (ext === 'ts') return 'Run TypeScript';
+    if (ext === 'js') return 'Run JavaScript';
+    if (ext === 'json') return 'View JSON';
+    if (ext === 'sh') return 'Run Shell Script';
+    if (ext === 'html') return 'Preview HTML';
+    return 'View File';
+  };
+
   const handleRunInShell = () => {
     if (!filePath) return;
-    
-    // Choose appropriate runtime CLI depending on file format extension
+
+    const ext = filePath.split(".").pop()?.toLowerCase();
     let execCmd = "";
-    if (filePath.endsWith(".ts")) {
+
+    if (ext === "ts") {
       execCmd = `npx tsx ${filePath}`;
-    } else if (filePath.endsWith(".js") || filePath.endsWith(".json")) {
+    } else if (ext === "js") {
       execCmd = `node ${filePath}`;
-    } else if (filePath.endsWith(".sh")) {
+    } else if (ext === "json") {
+      execCmd = `echo "JSON files cannot be executed. Use the file browser to validate or view ${filePath}."`;
+    } else if (ext === "sh") {
       execCmd = `bash ${filePath}`;
-    } else if (filePath.endsWith(".html")) {
+    } else if (ext === "html") {
       execCmd = `cat ${filePath} | head -n 25`;
     } else {
       execCmd = `cat ${filePath}`;
@@ -140,7 +153,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
               className="bg-[#1E1E22] hover:bg-[#28282D] text-white/80 hover:text-emerald-400 text-xs py-1 px-3 rounded-md border border-white/5 transition flex items-center gap-1 cursor-pointer"
               title="Run and execute file directly on active terminal console"
             >
-              <Terminal className="w-3.5 h-3.5" /> Execute
+              <Terminal className="w-3.5 h-3.5" /> {getActionLabelForFile(filePath || "")}
             </button>
 
             <button

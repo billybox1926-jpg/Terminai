@@ -145,7 +145,7 @@ export const AIShellOptimizer: React.FC<AIShellOptimizerProps> = ({ onExecuteCom
 
       {/* ERROR */}
       {error && (
-        <div className="mt-3 bg-rose-950/20 border border-rose-900/40 rounded p-2 text-rose-450 text-[11px] flex gap-2">
+        <div className="mt-3 bg-rose-950/20 border border-rose-900/40 rounded p-2 text-rose-500 text-[11px] flex gap-2">
           <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
           <div>{error}</div>
         </div>

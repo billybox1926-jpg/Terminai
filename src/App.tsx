@@ -27,6 +27,7 @@ import { PackageLibrary } from "./components/PackageLibrary";
 import { TermuxSettingsConsole } from "./components/TermuxSettingsConsole";
 import { QuickScriptsLauncher } from "./components/QuickScriptsLauncher";
 import { DeviceBuildStatus } from "./components/DeviceBuildStatus";
+import { appVersion } from "./generated/version";
 import { SystemStats, TerminalLine, TerminalSession, TermuxProperties } from "./types";
 
 const SESSION_USER_LABEL = "local-session";
@@ -381,7 +382,7 @@ export default function App() {
             <span className="font-display font-black text-sm tracking-tight text-white uppercase flex items-center gap-1.5">
               Terminai <span className="text-[10px] text-emerald-400 bg-emerald-950/40 px-1.5 py-0.5 border border-emerald-920 rounded lowercase font-mono">native_gui</span>
             </span>
-            <p className="text-[10px] text-white/40 font-mono">Optimized Container Shell v4.0.0</p>
+            <p className="text-[10px] text-white/40 font-mono">Optimized Container Shell v{appVersion}</p>
           </div>
         </div>
 
