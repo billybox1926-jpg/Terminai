@@ -29,6 +29,7 @@
     "check": "npm run typecheck && npm run runtime:validate && npm test && npm run build && npm run runtime:status && npm run security:smoke",
     "runtime:bundle": "node scripts/build-runtime-bundle.mjs",
     "runtime:status": "node scripts/runtime-status.mjs",
+    "smoke:runtime": "node scripts/smoke-runtime.mjs",
     "lint": "npm run typecheck",
     "runtime:validate": "node scripts/validate-runtime-manifests.mjs",
     "test": "node --test",
