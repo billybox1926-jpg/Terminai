@@ -104,7 +104,7 @@ async function main() {
 
     const timeout = await request("/api/terminal/execute", {
       method: "POST",
-      body: JSON.stringify({ command: "node -e \"setTimeout(() => {}, 1000)\"" })
+      body: JSON.stringify({ command: 'node -e "for (let i = 0; i < Number.MAX_SAFE_INTEGER; i++) { Math.atan2(Math.random(), Math.random()); }"' })
     });
 
     if (!timeout.response.ok || !looksLikeTimeoutEvidence(timeout.body)) {
