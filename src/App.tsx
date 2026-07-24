@@ -29,6 +29,8 @@ import { QuickScriptsLauncher } from "./components/QuickScriptsLauncher";
 import { DeviceBuildStatus } from "./components/DeviceBuildStatus";
 import { SystemStats, TerminalLine, TerminalSession, TermuxProperties } from "./types";
 
+const SESSION_USER_LABEL = "local-session";
+
 export default function App() {
   // Termux-cannibalized Properties Customizer State
   const [properties, setProperties] = useState<TermuxProperties>({
@@ -400,7 +402,7 @@ export default function App() {
           {/* User badge */}
           <div className="flex items-center gap-1.5 bg-[#050505] px-2.5 py-1 rounded border border-white/5">
             <User className="w-3.5 h-3.5 text-emerald-400/80" />
-            <span className="text-[10px] text-white/60 font-mono truncate max-w-[130px]">billybox1926</span>
+            <span className="text-[10px] text-white/60 font-mono truncate max-w-[130px]">{SESSION_USER_LABEL}</span>
           </div>
         </div>
       </header>
