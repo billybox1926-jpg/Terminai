@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { TerminalLine, TerminalSession, TermuxProperties } from "../types";
 
+const TERMINAL_PROMPT_USER = "session";
+
 interface TerminalConsoleProps {
   lines: TerminalLine[];
   onSendCommand: (cmd: string) => void;
@@ -421,7 +423,7 @@ export const TerminalConsole: React.FC<TerminalConsoleProps> = ({
               <div key={line.id} className={`${theme.fontClass} text-xs break-all leading-normal`}>
                 {line.type === "command" && (
                   <span className={`${theme.promptColor} mr-1.5 select-none font-bold`}>
-                    billybox@{getPromptPath()}$
+                    {TERMINAL_PROMPT_USER}@{getPromptPath()}$
                   </span>
                 )}
                 <span className={color}>{line.text}</span>
@@ -456,7 +458,7 @@ export const TerminalConsole: React.FC<TerminalConsoleProps> = ({
         className="flex gap-2.5 items-center bg-[#0C0C0E] border border-white/5 rounded-xl px-4 py-2.5 shrink-0 select-none focus-within:border-emerald-500/40 transition duration-150"
       >
         <label htmlFor="cli-input-field" className={`${theme.promptColor} font-bold text-xs select-none shrink-0 whitespace-nowrap`}>
-          billybox@{getPromptPath()}$
+          {TERMINAL_PROMPT_USER}@{getPromptPath()}$
         </label>
         
         <div className="flex-1 flex items-center relative">
