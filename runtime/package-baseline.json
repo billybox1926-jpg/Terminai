@@ -8,7 +8,13 @@
     "category": "Version Control",
     "description": "Distributed version control system",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "git",
+      "macos": "git",
+      "windows": "git",
+      "termux": "git"
+    }
   },
   {
     "id": "curl",
@@ -19,7 +25,13 @@
     "category": "Network",
     "description": "Command line tool for transferring data via URL",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "curl",
+      "macos": "curl",
+      "windows": "curl",
+      "termux": "curl"
+    }
   },
   {
     "id": "wget",
@@ -30,7 +42,13 @@
     "category": "Network",
     "description": "Non-interactive network downloader",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "wget",
+      "macos": "wget",
+      "windows": "wget",
+      "termux": "wget"
+    }
   },
   {
     "id": "jq",
@@ -41,7 +59,13 @@
     "category": "Utility",
     "description": "Command-line JSON query processor",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "jq",
+      "macos": "jq",
+      "windows": "jq",
+      "termux": "jq"
+    }
   },
   {
     "id": "tmux",
@@ -52,7 +76,13 @@
     "category": "Terminal",
     "description": "Terminal session multiplexer",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "tmux",
+      "macos": "tmux",
+      "windows": "tmux",
+      "termux": "tmux"
+    }
   },
   {
     "id": "sqlite3",
@@ -63,7 +93,13 @@
     "category": "Database",
     "description": "SQLite command-line shell",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "sqlite3",
+      "macos": "sqlite3",
+      "windows": "sqlite3",
+      "termux": "sqlite"
+    }
   },
   {
     "id": "python3",
@@ -74,7 +110,13 @@
     "category": "Runtime",
     "description": "Python interpreter",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "python3",
+      "macos": "python3",
+      "windows": "python3",
+      "termux": "python"
+    }
   },
   {
     "id": "nodejs",
@@ -85,7 +127,13 @@
     "category": "Runtime",
     "description": "Node.js JavaScript runtime",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "nodejs",
+      "macos": "nodejs",
+      "windows": "nodejs",
+      "termux": "nodejs"
+    }
   },
   {
     "id": "npm",
@@ -96,7 +144,13 @@
     "category": "Runtime",
     "description": "Node package manager",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "npm",
+      "macos": "npm",
+      "windows": "npm",
+      "termux": "npm"
+    }
   },
   {
     "id": "gcc",
@@ -107,7 +161,13 @@
     "category": "Development",
     "description": "GNU C compiler",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "gcc",
+      "macos": "xcode-select --install",
+      "windows": "gcc",
+      "termux": "gcc"
+    }
   },
   {
     "id": "build-essential",
@@ -118,7 +178,13 @@
     "category": "Development",
     "description": "Build toolchain meta-package (make, gcc, libc-dev)",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "build-essential",
+      "macos": "xcode-select --install",
+      "windows": "npm install -g windows-build-tools",
+      "termux": "build-essential"
+    }
   },
   {
     "id": "make",
@@ -129,7 +195,13 @@
     "category": "Development",
     "description": "Build automation helper",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "make",
+      "macos": "make",
+      "windows": "make",
+      "termux": "make"
+    }
   },
   {
     "id": "ripgrep",
@@ -140,7 +212,13 @@
     "category": "Utility",
     "description": "Fast, modern line-oriented search tool",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "ripgrep",
+      "macos": "ripgrep",
+      "windows": "ripgrep",
+      "termux": "ripgrep"
+    }
   },
   {
     "id": "htop",
@@ -151,7 +229,13 @@
     "category": "Utility",
     "description": "Interactive process viewer",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "htop",
+      "macos": "htop",
+      "windows": "htop",
+      "termux": "htop"
+    }
   },
   {
     "id": "nano",
@@ -162,7 +246,13 @@
     "category": "Development",
     "description": "Terminal text editor",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "nano",
+      "macos": "nano",
+      "windows": "nano",
+      "termux": "nano"
+    }
   },
   {
     "id": "openssh",
@@ -173,7 +263,13 @@
     "category": "Network",
     "description": "Secure shell client and server",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "openssh-client openssh-server",
+      "macos": "openssh",
+      "windows": "OpenSSH.Client",
+      "termux": "openssh"
+    }
   },
   {
     "id": "unzip",
@@ -184,7 +280,13 @@
     "category": "Utility",
     "description": "ZIP extraction utility",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "unzip",
+      "macos": "unzip",
+      "windows": "unzip",
+      "termux": "unzip"
+    }
   },
   {
     "id": "zip",
@@ -195,7 +297,13 @@
     "category": "Utility",
     "description": "ZIP packaging utility",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "zip",
+      "macos": "zip",
+      "windows": "zip",
+      "termux": "zip"
+    }
   },
   {
     "id": "tar",
@@ -206,6 +314,12 @@
     "category": "Utility",
     "description": "Tar archive utility",
     "required": true,
-    "installByDefault": true
+    "installByDefault": true,
+    "platforms": {
+      "linux": "tar",
+      "macos": "tar",
+      "windows": "tar",
+      "termux": "tar"
+    }
   }
 ]

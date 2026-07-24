@@ -134,6 +134,19 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
+      - name: Run Android APK install smoke test
+        shell: bash
+        run: |
+          set -euxo pipefail
+          chmod +x scripts/android-install-smoke.sh
+          scripts/android-install-smoke.sh || {
+            echo "❌ Android APK install smoke failed."
+            echo "Remediation:"
+            echo "  - Verify Android SDK/build-tools installation"
+            echo "  - See scripts/android-install-smoke.sh requirements"
+            exit 1
+          }
+
       - name: Build Android unsigned release APK
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon --stacktrace

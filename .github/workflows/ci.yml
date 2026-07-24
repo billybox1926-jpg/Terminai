@@ -85,6 +85,9 @@ jobs:
       - name: Run command and file API safety smoke tests
         run: npm run security:smoke
 
+      - name: Run web/runtime regression smoke
+        run: npm run smoke:runtime
+
       - name: Upload production server logs
         if: always()
         uses: actions/upload-artifact@v4
