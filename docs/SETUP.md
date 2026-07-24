@@ -55,8 +55,6 @@ brew install node git
 
 The web server and frontend run fine on macOS. The runtime/bootstrap endpoints are Linux-oriented, so some package install/status behavior will not match Linux exactly.
 
-Treat bootstrap as platform-aware: `brew` is the equivalent for most developer tools, and `xcode-select --install` covers the command-line toolchain. System-level packages like `systemd` do not exist on macOS.
-
 ### Windows
 
 Use WSL/Git Bash for the terminal/package-bootstrap paths:
@@ -67,7 +65,7 @@ winget install OpenJS.NodeJS Git.Git
 
 Then run the same Node-based commands from a bash shell.
 
-If you stay in pure Windows CMD/PowerShell, expect shell-command and path assumptions from the runtime layer to behave differently. Package bootstrap uses Linux equivalent mapping in the runtime manifest; Windows is supported for contributor workflows, not native terminal bootstrap.
+If you stay in pure Windows CMD/PowerShell, expect shell-command and path assumptions from the runtime layer to behave differently.
 
 ## Android native app
 
