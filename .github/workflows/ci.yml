@@ -94,7 +94,7 @@ jobs:
           done
           curl -fsS "http://127.0.0.1:3099/" >/dev/null
           curl -fsS "http://127.0.0.1:3099/api/runtime/status" >/dev/null
-          npm run security:smoke
+          TERMINAI_COMMAND_TIMEOUT_MS=100 npm run security:smoke
           npm run smoke:runtime
 
       - name: Upload production server logs
