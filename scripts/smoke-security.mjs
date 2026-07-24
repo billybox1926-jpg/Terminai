@@ -59,6 +59,15 @@ function stopServer(child) {
   }
 }
 
+function looksLikeTimeoutEvidence(body) {
+  if (!body || typeof body !== "object") return false;
+  const code = body.code;
+  const stderr = String(body.stderr || "");
+  const stdout = String(body.stdout || "");
+  if (code === 124 || code === 143) return true;
+  return /timed?\s*out|killed|terminated/i.test(stderr) || /timed?\s*out|killed|terminated/i.test(stdout);
+}
+
 async function main() {
   const child = spawn(process.execPath, ["dist/server.js"], {
     env: serverEnv,
@@ -97,8 +106,12 @@ async function main() {
       method: "POST",
       body: JSON.stringify({ command: "node -e \"setTimeout(() => {}, 1000)\"" })
     });
-    if (!timeout.response.ok || timeout.body?.code === 0) {
-      throw new Error("Command timeout env var was not accepted/enforced by terminal executor");
+
+    if (!timeout.response.ok || !looksLikeTimeoutEvidence(timeout.body)) {
+      throw new Error(
+        `Command timeout env var was not accepted/enforced by terminal executor. ` +
+          `Response: ${JSON.stringify(timeout.body)}`
+      );
     }
 
     console.log("Security smoke checks passed.");
