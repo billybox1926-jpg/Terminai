@@ -97,9 +97,6 @@ jobs:
           TERMINAI_COMMAND_TIMEOUT_MS=100 npm run security:smoke
           npm run smoke:runtime
 
-      - name: Run web/runtime regression smoke
-        run: npm run smoke:runtime
-
       - name: Upload production server logs
         if: always()
         uses: actions/upload-artifact@v4
