@@ -17,6 +17,7 @@ dotenv.config();
 // Initialize express app
 const app = express();
 const PORT = Number.parseInt(process.env.PORT ?? "3000", 10);
+const HOST = process.env.TERMINAI_BIND_ADDRESS ?? "127.0.0.1";
 const COMMAND_TIMEOUT_MS = Number.parseInt(process.env.TERMINAI_COMMAND_TIMEOUT_MS ?? "30000", 10);
 const COMMAND_MAX_BUFFER = Number.parseInt(process.env.TERMINAI_COMMAND_MAX_BUFFER ?? "1048576", 10);
 const WORKSPACE_ROOT = path.resolve(process.env.TERMINAI_WORKSPACE_ROOT || process.cwd());
@@ -25,6 +26,42 @@ const TERMINAL_OUTPUT_TRUNCATED = "... (output truncated)";
 
 // Body parser
 app.use(express.json());
+
+function loadAuthMiddleware() {
+  const apiKey = process.env.TERMINAI_API_KEY?.trim();
+
+  if (!apiKey) {
+    return;
+  }
+
+  const prefix = process.env.TERMINAI_AUTH_HEADER?.trim() || "x-api-key";
+  const headerName = prefix.toLowerCase();
+
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const raw = req.headers[headerName];
+    let candidate = Array.isArray(raw) ? raw[0] : raw;
+    if (!candidate && prefix === "authorization" && typeof req.headers.authorization === "string") {
+      candidate = req.headers.authorization.replace(/^bearer\s+/i, "");
+    }
+    if (!candidate || candidate !== apiKey) {
+      return res.status(401).json({ error: "Unauthorized", message: "Missing or invalid API key." });
+    }
+    next();
+  };
+}
+
+const authMiddleware: express.RequestHandler | undefined = loadAuthMiddleware();
+const appAny: any = app;
+function applyAuth(method: string, path: string, handler: express.RequestHandler) {
+  if (!authMiddleware) {
+    return appAny[method](path, handler);
+  }
+  return appAny[method](path, authMiddleware, handler);
+}
+
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok" });
+});
 
 // Lazy-loaded Gemini Client following guidance
 let aiClient: GoogleGenAI | null = null;
@@ -48,9 +85,39 @@ function getGeminiClient(): GoogleGenAI {
 }
 
 
-/** Returns true when targetPath is inside the configured workspace root. */
+/** Returns true when targetPath is inside the configured workspace root, including symlink resolution. */
 function isInsideWorkspace(targetPath: string): boolean {
-  const relative = path.relative(WORKSPACE_ROOT, path.resolve(targetPath));
+  let normalizedRoot;
+  try {
+    normalizedRoot = fs.realpathSync(WORKSPACE_ROOT);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      normalizedRoot = path.resolve(WORKSPACE_ROOT);
+    } else {
+      throw error;
+    }
+  }
+
+  const absoluteTarget = path.resolve(targetPath);
+  let normalizedTarget = absoluteTarget;
+  let remainder = absoluteTarget;
+  while (remainder !== normalizedRoot && !path.relative(path.resolve(WORKSPACE_ROOT), remainder).startsWith("..")) {
+    try {
+      normalizedTarget = fs.realpathSync(remainder);
+      break;
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        throw error;
+      }
+      const parent = path.dirname(remainder);
+      if (parent === remainder) {
+        break;
+      }
+      remainder = parent;
+    }
+  }
+
+  const relative = path.relative(normalizedRoot, normalizedTarget);
   return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
@@ -1885,8 +1952,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Terminai Graphical Shell Backend actively listening on port ${PORT}`);
+  app.listen(PORT, HOST, () => {
+    console.log(`Terminai Graphical Shell Backend actively listening on ${HOST}:${PORT}`);
   });
 
   // Run startup check after server is listening (non-blocking)

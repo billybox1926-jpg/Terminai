@@ -761,7 +761,7 @@ export const DeviceBuildStatus: React.FC<DeviceBuildStatusProps> = ({ onSendComm
                 type="button"
                 onClick={handleRunGitRebase}
                 disabled={rebasing || !repoUrl.trim() || !targetCommit.trim()}
-                className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs py-2 px-4.5 rounded-md transition flex items-center gap-1.5 cursor-pointer max-w-fit"
+                className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs py-2 px-5 rounded-md transition flex items-center gap-1.5 cursor-pointer max-w-fit"
               >
                 {rebasing ? (
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />

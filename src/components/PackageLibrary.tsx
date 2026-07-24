@@ -189,7 +189,7 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
         </div>
         <button
           onClick={() => { fetchPackages(); fetchBootstrapStatus(); fetchRuntimeStatus(); }}
-          className="text-[10px] text-emerald-400 hover:text-emerald-300 decoration-emerald-550 hover:underline cursor-pointer font-bold font-sans"
+          className="text-[10px] text-emerald-400 hover:text-emerald-300 decoration-emerald-500 hover:underline cursor-pointer font-bold font-sans"
         >
           Check status
         </button>
