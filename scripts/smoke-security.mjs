@@ -38,12 +38,12 @@ async function request(path, options = {}) {
 }
 
 async function waitForServer(child) {
-  for (let attempt = 0; attempt < 40; attempt += 1) {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
     if (child.exitCode !== null) {
       throw new Error(`Server exited early with code ${child.exitCode}`);
     }
     try {
-      const { response } = await request("/api/runtime/status");
+      const { response } = await request("/api/health");
       if (response.ok) return;
     } catch {
       // Not ready yet.
