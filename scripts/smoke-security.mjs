@@ -104,7 +104,7 @@ async function main() {
 
     const timeout = await request("/api/terminal/execute", {
       method: "POST",
-      body: JSON.stringify({ command: 'node -e "while(true){}"' })
+      body: JSON.stringify({ command: "python -c 'import time; time.sleep(60)'" })
     });
 
     if (!timeout.response.ok || !looksLikeTimeoutEvidence(timeout.body)) {
