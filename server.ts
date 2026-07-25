@@ -517,8 +517,10 @@ app.post("/api/terminal/execute", (req, res) => {
   const limitState = { bytes: 0, truncated: false };
   let timedOut = false;
   const timeoutMs = getCommandTimeoutMs();
+  console.info(`[Smoke] timeout=${timeoutMs} cmd=${execution.command} args=${JSON.stringify(execution.args)} blocked=${execution.blocked}`);
   const timeout = setTimeout(() => {
     timedOut = true;
+    console.info(`[Smoke] signaling SIGTERM for pid=${child.pid} cmd=${execution.command}`);
     child.kill("SIGTERM");
     setTimeout(() => { if (!child.killed) child.kill("SIGKILL"); }, 1500).unref();
   }, timeoutMs);
