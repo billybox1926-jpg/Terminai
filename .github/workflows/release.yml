@@ -206,17 +206,16 @@ jobs:
           cp android/app/build/outputs/apk/debug/app-debug.apk \
             "release-artifacts/terminai-android-debug-${VERSION}.apk"
 
-          cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
-            "release-artifacts/terminai-android-release-unsigned-${VERSION}.apk"
-
           if [[ "${TERMINAI_SIGNED_BUILD:-false}" == "true" ]]; then
             cp android/app/build/outputs/apk/release/app-release.apk \
               "release-artifacts/terminai-android-release-signed-${VERSION}.apk"
             SIGNED_STATUS="signed APK included"
             SIGNED_ARTIFACT="- terminai-android-release-signed-${VERSION}.apk — signed release APK."
           else
+            cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
+              "release-artifacts/terminai-android-release-unsigned-${VERSION}.apk"
             SIGNED_STATUS="no complete signing secrets — signed APK not produced"
-            SIGNED_ARTIFACT=""
+            SIGNED_ARTIFACT="- terminai-android-release-unsigned-${VERSION}.apk — unsigned release APK."
           fi
 
           cp server.log "release-artifacts/terminai-web-server-${VERSION}.log"
@@ -233,7 +232,6 @@ jobs:
 
           - terminai-web-dist-${VERSION}.tar.gz — production Vite client, bundled Express server, and runtime bundle manifest.
           - terminai-android-debug-${VERSION}.apk — debug APK for install/testing.
-          - terminai-android-release-unsigned-${VERSION}.apk — unsigned release APK.
           ${SIGNED_ARTIFACT}
           - terminai-${VERSION}-sha256sums.txt — SHA-256 checksums.
 
