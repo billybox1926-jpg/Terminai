@@ -104,7 +104,7 @@ async function main() {
 
     const timeout = await request("/api/terminal/execute", {
       method: "POST",
-      body: JSON.stringify({ command: 'node -e "setTimeout(()=>{}, 60000)"' })
+      body: JSON.stringify({ command: "node scripts/smoke-timeout-exercise.mjs" })
     });
 
     if (!timeout.response.ok || !looksLikeTimeoutEvidence(timeout.body)) {
