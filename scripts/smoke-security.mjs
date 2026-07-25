@@ -2,12 +2,15 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
 
-const port = Number.parseInt(process.env.TEST_PORT || `${32000 + Math.floor(Math.random() * 1000)}`, 10);
+const SMOKE_PORT_MIN = 32100;
+const SMOKE_PORT_MAX = 32200;
+const port = Number.parseInt(process.env.SMOKE_PORT || process.env.TEST_PORT || `${SMOKE_PORT_MIN + Math.floor(Math.random() * (SMOKE_PORT_MAX - SMOKE_PORT_MIN + 1))}`, 10);
 const baseUrl = `http://127.0.0.1:${port}`;
 const serverEnv = Object.fromEntries(
   Object.entries({
     ...process.env,
     PORT: String(port),
+    NODE_ENV: "production",
     TERMINAI_COMMAND_TIMEOUT_MS: "100",
     TERMINAI_COMMAND_MAX_BUFFER: "4096"
   }).filter(([key, value]) => key && !key.startsWith("=") && typeof value === "string")
@@ -40,17 +43,17 @@ async function request(path, options = {}) {
 async function waitForServer(child) {
   for (let attempt = 0; attempt < 120; attempt += 1) {
     if (child.exitCode !== null) {
-      throw new Error(`Server exited early with code ${child.exitCode}`);
+      throw new Error(`Server exited early with code ${child.exitCode}${logs ? `: ${logs.trim().split("\n").slice(-20).join("\n")}` : ""}`);
     }
     try {
-      const { response } = await request("/api/health");
-      if (response.ok) return;
+      const health = await request("/api/health");
+      if (health.response.ok) return;
     } catch {
       // Not ready yet.
     }
     await delay(250);
   }
-  throw new Error("Timed out waiting for production server");
+  throw new Error(`Timed out waiting for production server at ${baseUrl}${logs ? `: ${logs.trim().split("\n").slice(-20).join("\n")}` : ""}`);
 }
 
 function stopServer(child) {
