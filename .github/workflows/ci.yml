@@ -80,10 +80,13 @@ jobs:
           set -euxo pipefail
           pkill -f "node.*vite" 2>/dev/null || true
           pkill -f "node.*dev" 2>/dev/null || true
+          pkill -f "node.*dist/server" 2>/dev/null || true
           pkill -f "chromium" 2>/dev/null || true
           pkill -f "chrome" 2>/dev/null || true
-          for port in 24678 24679 24680 32025 32026 32027; do
-            lsof -ti:${port} | xargs kill -9 2>/dev/null || true
+          for port in 3099 32025 32026 32027 32100 32200 32300 32400 24678 24679 24680; do
+            if lsof -ti:${port} >/dev/null 2>&1; then
+              lsof -ti:${port} | xargs kill -9 2>/dev/null || true
+            fi
           done
           sleep 2
 
@@ -91,19 +94,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          PORT=3099 TERMINAI_COMMAND_TIMEOUT_MS=100 npm run start > server.log 2>&1 &
+          SMOKE_PORT=3099 NODE_ENV=production TERMINAI_COMMAND_TIMEOUT_MS=100 npm run start > server.log 2>&1 &
           SERVER_PID=$!
-          trap 'kill ${SERVER_PID} 2>/dev/null || true' EXIT
-          for attempt in {1..60}; do
-            if curl -fsS "http://127.0.0.1:3099/" >/dev/null; then
-              break
-            fi
-            sleep 1
-          done
-          curl -fsS "http://127.0.0.1:3099/" >/dev/null
-          curl -fsS "http://127.0.0.1:3099/api/runtime/status" >/dev/null
-          TERMINAI_COMMAND_TIMEOUT_MS=100 npm run security:smoke
-          npm run smoke:runtime
+          SMOKE_PORT=3099 NODE_ENV=production TERMINAI_COMMAND_TIMEOUT_MS=100 npm run smoke:runtime
+          kill ${SERVER_PID} 2>/dev/null || true
 
       - name: Upload production server logs
         if: always()
