@@ -23,19 +23,19 @@ android {
     // Conditional release signing: only activates when ALL required
     // environment variables are present (set by GitHub Actions secrets).
     // Without secrets, the release build remains unsigned (existing behavior).
-    def keystorePath = System.getenv('TERMINAI_KEYSTORE_PATH')
-    def keystorePassword = System.getenv('TERMINAI_ANDROID_KEYSTORE_PASSWORD')
-    def keyAlias = System.getenv('TERMINAI_ANDROID_KEY_ALIAS')
-    def keyPassword = System.getenv('TERMINAI_ANDROID_KEY_PASSWORD')
-    def signingReady = keystorePath && keystorePassword && keyAlias && keyPassword
+    def keystorePathEnv = System.getenv('TERMINAI_KEYSTORE_PATH')
+    def keystorePasswordEnv = System.getenv('TERMINAI_ANDROID_KEYSTORE_PASSWORD')
+    def keystoreAliasEnv = System.getenv('TERMINAI_ANDROID_KEY_ALIAS')
+    def keystoreKeyPasswordEnv = System.getenv('TERMINAI_ANDROID_KEY_PASSWORD')
+    def signingReady = keystorePathEnv && keystorePasswordEnv && keystoreAliasEnv && keystoreKeyPasswordEnv
 
     signingConfigs {
         release {
             if (signingReady) {
-                storeFile file(keystorePath)
-                storePassword keystorePassword
-                keyAlias keyAlias
-                keyPassword keyPassword
+                storeFile file(keystorePathEnv)
+                storePassword keystorePasswordEnv
+                keyAlias keystoreAliasEnv
+                keyPassword keystoreKeyPasswordEnv
             }
         }
     }
