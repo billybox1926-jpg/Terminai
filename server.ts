@@ -5,6 +5,7 @@ import os from "os";
 import { exec, execFile, spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { createHash } from "crypto";
+import { defaultRateLimiter, strictRateLimiter, permissiveRateLimiter } from "./src/middleware/rateLimit.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,6 +33,19 @@ const TERMINAL_OUTPUT_TRUNCATED = "... (output truncated)";
 
 // Body parser
 app.use(express.json());
+
+// Rate limiting middleware
+// Default limiter applies to all routes, with health checks exempted
+app.use(defaultRateLimiter);
+
+// Route-specific strict limiters for heavy operations
+app.use("/api/package-manager/install", strictRateLimiter);
+app.use("/api/runtime/bootstrap/install", strictRateLimiter);
+app.use("/api/runtime/bootstrap/repair", strictRateLimiter);
+app.use("/api/terminal/execute", strictRateLimiter);
+
+// File manager gets a permissive limiter (20 req/min)
+app.use("/api/file-manager", permissiveRateLimiter);
 
 function loadAuthMiddleware() {
   const apiKey = process.env.TERMINAI_API_KEY?.trim();
