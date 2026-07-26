@@ -65,8 +65,6 @@ function applyAuth(method: string, path: string, handler: express.RequestHandler
   return appAny[method](path, authMiddleware, handler);
 }
 
-app.get("/api/system/stats", (req, res) => {
-});
 
 // Lazy-loaded Gemini Client following guidance
 let aiClient: GoogleGenAI | null = null;
@@ -2155,4 +2153,8 @@ async function startServer() {
   });
 }
 
-startServer();
+export default app;
+
+if (process.env.NODE_ENV !== "test") {
+  startServer();
+}

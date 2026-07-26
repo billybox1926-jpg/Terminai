@@ -32,7 +32,8 @@
     "smoke:runtime": "node scripts/smoke-runtime.mjs",
     "lint": "npm run typecheck",
     "runtime:validate": "node scripts/validate-runtime-manifests.mjs",
-    "test": "node --test",
+    "test": "vitest run --coverage=false",
+    "test:routes": "vitest run --coverage=false",
     "security:smoke": "node scripts/smoke-security.mjs"
   },
   "dependencies": {
@@ -59,10 +60,14 @@
     "@types/range-parser": "^1.2.7",
     "@types/send": "^1.2.1",
     "@types/serve-static": "^2.2.0",
+    "@types/supertest": "^6.0.3",
     "@vitejs/plugin-react": "^5.0.4",
+    "@vitest/coverage-v8": "^3.2.7",
     "autoprefixer": "^10.5.0",
     "esbuild": "^0.25.0",
+    "supertest": "^6.3.4",
     "tsx": "^4.21.0",
-    "typescript": "~5.8.2"
+    "typescript": "~5.8.2",
+    "vitest": "^3.2.7"
   }
 }
