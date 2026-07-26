@@ -120,3 +120,13 @@ describe("File manager route security", () => {
     expect(res.body).toHaveProperty("error");
   });
 });
+
+describe("Rate limiting", () => {
+  it("health check is not rate-limited", async () => {
+    // Rate limiting is disabled in test mode via NODE_ENV=test
+    // This test verifies the endpoint works normally
+    const res = await request(app).get("/api/health");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: "ok" });
+  });
+});
