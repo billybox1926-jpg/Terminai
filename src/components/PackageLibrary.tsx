@@ -98,6 +98,15 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
     return /^[a-z0-9][a-z0.+-]*$/.test(name.trim().toLowerCase());
   };
 
+  const buildRenderOnlyInstallCommand = (): string => {
+    const packages = absentTools.filter(t => t.aptPackages).map(t => t.aptPackages).join(" ");
+    const parts = packages.split(/\s+/).filter(Boolean);
+    if (!parts.length) return "";
+    const manager = bootstrapStatus?.packageManager || runtimeStatus?.state?.detectedPackageManager || "apt";
+    const base = manager === "pkg" ? "pkg install -y" : "apt-get install -y";
+    return `echo "Installing ${parts.length} missing packages..." && ${base} ${parts.join(" ")}`;
+  };
+
   const handleBootstrapRuntime = async () => {
     setBootstrapping(true);
     try {
@@ -107,10 +116,15 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
         body: JSON.stringify({}),
       });
       const data = await response.json();
-      if (data.command) {
-        onRunInstallCommand(data.command);
+      const command =
+        data.installArgv
+          ? String(data.installArgv).replace(/^--\s*/, "").trim()
+          : data.displayHint
+            ? data.displayHint
+            : buildRenderOnlyInstallCommand();
+      if (command) {
+        onRunInstallCommand(command);
       }
-      // Refresh status
       await fetchPackages();
       await fetchBootstrapStatus();
     } catch (err) {
@@ -129,10 +143,15 @@ export const PackageLibrary: React.FC<PackageLibraryProps> = ({ onRunInstallComm
         body: JSON.stringify({}),
       });
       const data = await response.json();
-      if (data.command) {
-        onRunInstallCommand(data.command);
+      const command =
+        data.installArgv
+          ? String(data.installArgv).replace(/^--\s*/, "").trim()
+          : data.displayHint
+            ? data.displayHint
+            : buildRenderOnlyInstallCommand();
+      if (command) {
+        onRunInstallCommand(command);
       }
-      // Refresh status
       await fetchPackages();
       await fetchBootstrapStatus();
     } catch (err) {

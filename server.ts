@@ -12,7 +12,8 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 
-dotenv.config();
+dotenv.config({ path: ".env" });
+dotenv.config({ path: ".env.local", override: true });
 
 // Initialize express app
 const app = express();
@@ -754,15 +755,16 @@ app.post("/api/file-manager/create-folder", (req, res) => {
 });
 
 // Package manager helper - Query native installations of standard development CLI tools
-app.get("/api/package-manager/list", (req, res) => {
+app.get("/api/package-manager/list", async (req, res) => {
   const baseDir = WORKSPACE_ROOT;
   const manifestPath = path.join(baseDir, "runtime", "package-baseline.json");
 
   let tools: any[] = [];
   try {
     if (fs.existsSync(manifestPath)) {
-      const manifestRaw = fs.readFileSync(manifestPath, "utf-8");
-      tools = JSON.parse(manifestRaw);
+      const raw = fs.readFileSync(manifestPath, "utf-8");
+      tools = JSON.parse(raw);
+      if (!Array.isArray(tools)) tools = [];
     } else {
       console.warn(`[Package Manager] Baseline manifest not found at: ${manifestPath}, using fallback list`);
       tools = [
@@ -791,57 +793,8 @@ app.get("/api/package-manager/list", (req, res) => {
     console.error("Failed to read runtime baseline packages manifest:", err);
   }
 
-  Promise.all(
-    tools.map(tool => {
-      return new Promise<any>((resolve) => {
-        const cmdName = tool.queryCommand || tool.queryCmd || tool.id;
-        exec(`which ${cmdName}`, (err, stdout) => {
-          if (err || !stdout) {
-            resolve({
-              id: tool.id,
-              name: tool.id || tool.name,
-              displayName: tool.displayName || tool.id,
-              aptPackages: tool.aptPackages,
-              queryCommand: cmdName,
-              description: tool.description,
-              category: tool.category,
-              required: tool.required !== false,
-              installed: false,
-              version: null
-            });
-          } else {
-            const versionCmd = cmdName === "gcc" ? "gcc --version | head -n 1" : `${cmdName} --version || ${cmdName} -v`;
-            exec(versionCmd, (vErr, vStdout) => {
-              let version = "Detected";
-              try {
-                if (!vErr && vStdout) {
-                  const firstLine = vStdout.trim().split("\n")[0];
-                  if (firstLine) {
-                    const match = firstLine.match(/(\d+\.\d+(\.\d+)?)/);
-                    version = match ? match[0] : firstLine.substring(0, 24);
-                  }
-                }
-              } catch (parseErr) {
-                console.error("Failed to parse utility tool version:", parseErr);
-              }
-              resolve({
-                id: tool.id,
-                name: tool.id || tool.name,
-                displayName: tool.displayName || tool.id,
-                aptPackages: tool.aptPackages,
-                queryCommand: cmdName,
-                description: tool.description,
-                category: tool.category,
-                required: tool.required !== false,
-                installed: true,
-                version
-              });
-            });
-          }
-        });
-      });
-    })
-  ).then(results => {
+  try {
+    const results = await checkPackageStatus(tools);
     const total = results.length;
     const installed = results.filter((t: any) => t.installed).length;
     const missing = total - installed;
@@ -854,9 +807,9 @@ app.get("/api/package-manager/list", (req, res) => {
         ready: missing === 0,
       },
     });
-  }).catch(error => {
+  } catch (error: any) {
     res.status(500).json({ error: error.message });
-  });
+  }
 });
 
 function sanitizePackageName(name: string): string {
@@ -887,45 +840,32 @@ app.post("/api/package-manager/install", (req, res) => {
     return res.status(400).json({ error: "packageIds array is required." });
   }
 
-  const baseDir = WORKSPACE_ROOT;
-  const manifestPath = path.join(baseDir, "runtime", "package-baseline.json");
+  const baseline = readPackageBaseline();
+  const packageMap = new Map(baseline.map((p: any) => [String(p.id), p]));
+  const selected = packageIds.map(String).map(id => id.trim()).filter(id => id.length > 0);
 
-  let packages: any[] = [];
-  try {
-    if (fs.existsSync(manifestPath)) {
-      const raw = fs.readFileSync(manifestPath, "utf-8");
-      const parsed = JSON.parse(raw);
-      packages = Array.isArray(parsed) ? parsed : (parsed.packages || []);
-    }
-  } catch (error: any) {
-    return res.status(500).json({ error: `Failed to read baseline manifest: ${error.message}` });
+  if (selected.length === 0) {
+    return res.status(400).json({ error: "No valid package IDs provided." });
   }
 
-  const packageMap = new Map(packages.map((p: any) => [p.id, p]));
-  const aptPackages: string[] = [];
-
-  for (const id of packageIds) {
-    const pkg = packageMap.get(id);
-    if (!pkg) {
-      return res.status(404).json({ error: `Unknown package: ${id}` });
-    }
-    if (pkg.aptPackages) {
-      aptPackages.push(pkg.aptPackages);
-    }
+  const unknown = selected.filter(id => !packageMap.has(id));
+  if (unknown.length > 0) {
+    return res.status(404).json({ error: `Unknown package: ${unknown[0]}` });
   }
+
+  const aptPackages = selected
+    .map(id => packageMap.get(id)!.aptPackages)
+    .filter((item: any): item is string => typeof item === "string" && item.trim().length > 0);
 
   if (aptPackages.length === 0) {
-    return res.status(400).json({ error: "No valid apt packages found for the given IDs." });
+    return res.status(400).json({ error: "No installable packages for the selected IDs." });
   }
 
-  try {
-    const allApt = aptPackages.join(" ");
-    const sanitized = allApt.split(/\s+/).map(sanitizePackageName).join(" ");
-    const command = `echo "Installing ${sanitized}..." && apt-get update && apt-get install -y ${sanitized} || sudo apt-get update && sudo apt-get install -y ${sanitized}`;
-    res.json({ command, message: `Install command ready for: ${sanitized}` });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
+  res.json({
+    status: "authorized",
+    selected,
+    aptPackages
+  });
 });
 
 // -------------------------------------------------------
@@ -986,22 +926,23 @@ function detectPackageManager(): PkgManager {
   return "unknown";
 }
 
-function buildInstallCommand(packages: string[], manager: PkgManager): string {
-  const sanitized = packages
+function buildInstallCommand(packages: string[], manager: PkgManager): { argv: string[]; shell: boolean } {
+  const pkgNames = packages
     .flatMap(p => p.split(/\s+/))
-    .map(p => {
-      const cleaned = p.trim().toLowerCase();
-      if (!/^[a-z0-9][a-z0.+-]*$/.test(cleaned)) {
-        throw new Error(`Invalid package name: ${p}`);
+    .map(p => p.trim().toLowerCase())
+    .filter(name => {
+      if (!name) return false;
+      if (!/^[a-z0-9][a-z0-9.+-]*$/.test(name)) {
+        throw new Error(`Invalid package name: ${name}`);
       }
-      return cleaned;
-    })
-    .join(" ");
+      return true;
+    });
 
-  if (manager === "pkg") {
-    return `echo "Installing ${sanitized}..." && pkg update -y && pkg install -y ${sanitized}`;
-  }
-  return `echo "Installing ${sanitized}..." && apt-get update && apt-get install -y ${sanitized} || sudo apt-get update && sudo apt-get install -y ${sanitized}`;
+  const bin = manager === "pkg" ? "pkg" : "apt-get";
+  const argv = manager === "pkg"
+    ? [bin, "install", "-y", "--", ...pkgNames]
+    : [bin, "install", "-y", "--", ...pkgNames];
+  return { argv, shell: false };
 }
 
 function sanitizePackageNames(input: string[]): string[] {
@@ -1048,15 +989,15 @@ async function installMissingPackages(
   baselines: any[],
   missing: any[],
   manager: PkgManager,
-): Promise<{ command: string; sanitized: string[] }> {
+): Promise<{ argv: { argv: string[]; shell: boolean }; sanitized: string[] }> {
   const pkgNames: string[] = [];
   for (const m of missing) {
     const name = manager === "pkg" ? (m.termuxPackages || m.aptPackages) : m.aptPackages;
     if (name) pkgNames.push(name);
   }
   const sanitized = sanitizePackageNames(pkgNames);
-  const command = buildInstallCommand(sanitized, manager);
-  return { command, sanitized };
+  const argv = buildInstallCommand(sanitized, manager);
+  return { argv, sanitized };
 }
 
 // GET /api/runtime/bootstrap/status
@@ -1099,18 +1040,19 @@ app.post("/api/runtime/bootstrap/install", async (req, res) => {
     }
 
     if (missing.length === 0) {
-      return res.json({ command: null, message: "All baseline packages already installed.", installed: true });
+      return res.json({ installed: true, message: "All baseline packages already installed.", installArgv: null, displayHint: null });
     }
 
     const manager = detectPackageManager();
-    const { command, sanitized } = await installMissingPackages(baselines, missing, manager);
+    const { argv, sanitized } = await installMissingPackages(baselines, missing, manager);
 
     res.json({
-      command,
-      message: `Bootstrap ready for: ${sanitized.join(" ")}`,
+      status: "ready",
       packageManager: manager,
       missingCount: missing.length,
       packages: sanitized,
+      installArgv: argv.argv,
+      displayHint: argv.argv.join(" "),
     });
   } catch (error: any) {
     res.status(error.message?.includes("Invalid package name") ? 400 : 500).json({ error: error.message });
@@ -1125,18 +1067,19 @@ app.post("/api/runtime/bootstrap/repair", async (_req, res) => {
     const missing = packages.filter((p: any) => !p.installed);
 
     if (missing.length === 0) {
-      return res.json({ command: null, message: "Runtime is healthy. No repair needed.", healthy: true });
+      return res.json({ healthy: true, message: "Runtime is healthy. No repair needed.", installArgv: null, displayHint: null });
     }
 
     const manager = detectPackageManager();
-    const { command, sanitized } = await installMissingPackages(baselines, missing, manager);
+    const { argv, sanitized } = await installMissingPackages(baselines, missing, manager);
 
     res.json({
-      command,
-      message: `Repair ready for ${missing.length} missing packages: ${sanitized.join(" ")}`,
+      status: "repair-ready",
       packageManager: manager,
       missingCount: missing.length,
       packages: sanitized,
+      installArgv: argv.argv,
+      displayHint: argv.argv.join(" "),
     });
   } catch (error: any) {
     res.status(error.message?.includes("Invalid package name") ? 400 : 500).json({ error: error.message });
@@ -1562,31 +1505,63 @@ async function runStartupCheck(): Promise<RuntimeState> {
   if (autoBootstrap && missing.length > 0) {
     console.log(`[Runtime] TERMINAI_AUTO_BOOTSTRAP=true, installing ${missing.length} missing packages...`);
     try {
-      const { command, sanitized } = await installMissingPackages(baselines, missing, manager);
-      console.log(`[Runtime] Auto-bootstrap command: ${command}`);
-      // Execute the install command
-      const { exec } = await import("child_process");
-      exec(command, (err: any, stdout: string, stderr: string) => {
-        if (err) {
-          console.error(`[Runtime] Auto-bootstrap failed: ${err.message}`);
-          if (stderr) console.error(`[Runtime] stderr: ${stderr}`);
-        } else {
-          console.log(`[Runtime] Auto-bootstrap completed for: ${sanitized.join(" ")}`);
-          if (stdout) console.log(`[Runtime] stdout: ${stdout.substring(0, 500)}`);
-        }
-        // Re-check status after install
-        checkPackageStatus(baselines).then((updatedPackages: any[]) => {
-          const stillMissing = updatedPackages.filter((p: any) => !p.installed && p.required !== false);
-          state.runtimeReady = stillMissing.length === 0;
-          state.installedCount = updatedPackages.filter((p: any) => p.installed).length;
-          state.missingCount = updatedPackages.filter((p: any) => !p.installed).length;
-          state.requiredMissingCount = stillMissing.length;
-          state.lastBootstrapInstall = new Date().toISOString();
-          writeRuntimeState(state);
-        }).catch((e: any) => {
-          console.error("[Runtime] Post-bootstrap status check failed:", e);
+      const installResult = await installMissingPackages(baselines, missing, manager);
+      const prepared = installResult.argv;
+      const sanitized = installResult.sanitized;
+      const argv = prepared.argv;
+      if (!argv || argv.length === 0) {
+        console.error("[Runtime] No valid install argv produced.");
+      } else {
+        const workDir = path.join(os.tmpdir(), `terminai-install-${crypto.randomUUID()}`);
+        fs.mkdirSync(workDir, { recursive: true });
+        const controller = new AbortController();
+        const timeoutMs = getCommandTimeoutMs();
+        const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+        const child = spawn(argv[0], argv.slice(1), {
+          cwd: workDir,
+          shell: false,
+          stdio: ["ignore", "pipe", "pipe"],
+          signal: controller.signal,
         });
-      });
+        let stdout = "";
+        let stderr = "";
+        let outBytes = 0;
+        const sink = (kind: "stdout" | "stderr", data: Buffer) => {
+          const text = data.toString("utf8");
+          outBytes += Buffer.byteLength(text);
+          if (outBytes > COMMAND_MAX_BUFFER) {
+            controller.abort();
+            return;
+          }
+          if (kind === "stdout") stdout += text;
+          else stderr += text;
+        };
+        child.stdout!.on("data", (data: Buffer) => sink("stdout", data));
+        child.stderr!.on("data", (data: Buffer) => sink("stderr", data));
+        child.on("error", (err) => console.error(`[Runtime] Auto-bootstrap failed: ${err.message}`));
+        child.on("close", (code) => {
+          clearTimeout(timeoutHandle);
+          try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+          if (code !== 0) {
+            console.error(`[Runtime] Auto-bootstrap exited with ${code}`);
+            if (stderr) console.error(`[Runtime] stderr: ${stderr.slice(0, 500)}`);
+          } else {
+            console.log(`[Runtime] Auto-bootstrap completed for: ${sanitized.join(" ")}`);
+            if (stdout) console.log(`[Runtime] stdout: ${stdout.slice(0, 500)}`);
+          }
+          checkPackageStatus(baselines).then((updatedPackages: any[]) => {
+            const stillMissing = updatedPackages.filter((p: any) => !p.installed && p.required !== false);
+            state.runtimeReady = stillMissing.length === 0;
+            state.installedCount = updatedPackages.filter((p: any) => p.installed).length;
+            state.missingCount = updatedPackages.filter((p: any) => !p.installed).length;
+            state.requiredMissingCount = stillMissing.length;
+            state.lastBootstrapInstall = new Date().toISOString();
+            writeRuntimeState(state);
+          }).catch((e: any) => {
+            console.error("[Runtime] Post-bootstrap status check failed:", e);
+          });
+        });
+      }
     } catch (e: any) {
       console.error(`[Runtime] Auto-bootstrap error: ${e.message}`);
     }
