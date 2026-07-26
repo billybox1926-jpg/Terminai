@@ -32,7 +32,7 @@
     "smoke:runtime": "node scripts/smoke-runtime.mjs",
     "lint": "npm run typecheck",
     "runtime:validate": "node scripts/validate-runtime-manifests.mjs",
-    "test": "node --test",
+    "test": "vitest run --coverage=false",
     "test:routes": "vitest run --coverage=false",
     "security:smoke": "node scripts/smoke-security.mjs"
   },

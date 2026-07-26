@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import app from "../server.ts";
-import { TEST_ROOT, disposeTestWorkspace } from "./setup.js";
+import { TEST_ROOT, disposeTestWorkspace } from "./setup";
 
 afterAll(() => disposeTestWorkspace());
 
