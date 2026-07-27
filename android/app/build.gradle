@@ -1,6 +1,26 @@
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 
+// Build-time safeguard for API key
+def apiKey = project.findProperty("TERMINAI_API_KEY") as String? ?: System.getenv("TERMINAI_API_KEY") ?: ""
+
+// Fail fast for release builds if API key is missing
+def isReleaseBuild = gradle.startParameter.taskRequests.any { request ->
+    (request.args ?: []).any { arg -> arg.toString().toLowerCase().contains("release") || arg.toString().toLowerCase().contains("assemble") }
+}
+if (isReleaseBuild && apiKey.isEmpty()) {
+    throw new GradleException("TERMINAI_API_KEY is required for release builds. Set it in gradle.properties or as an environment variable.")
+}
+
+// Conditional release signing: only activates when ALL required
+// environment variables are present (set by GitHub Actions secrets).
+// Without secrets, the release build remains unsigned (existing behavior).
+def keystorePathEnv = System.getenv('TERMINAI_KEYSTORE_PATH')
+def keystorePasswordEnv = System.getenv('TERMINAI_ANDROID_KEYSTORE_PASSWORD')
+def keystoreAliasEnv = System.getenv('TERMINAI_ANDROID_KEY_ALIAS')
+def keystoreKeyPasswordEnv = System.getenv('TERMINAI_ANDROID_KEY_PASSWORD')
+def signingReady = keystorePathEnv && keystorePasswordEnv && keystoreAliasEnv && keystoreKeyPasswordEnv
+
 android {
     namespace 'com.billybox.terminai'
     compileSdk 34
@@ -16,26 +36,10 @@ android {
         vectorDrawables {
             useSupportLibrary true
         }
-    }
 
-    // Build-time safeguard for API key
-    def apiKey = project.findProperty("TERMINAI_API_KEY") as String? ?: System.getenv("TERMINAI_API_KEY") ?: ""
-    
-    // Fail fast for release builds if API key is missing
-    if (gradle.startParameter.taskRequests.any { it.name.contains("Release") || it.name.contains("assemble") } && apiKey.isEmpty()) {
-        throw new GradleException("TERMINAI_API_KEY is required for release builds. Set it in gradle.properties or as an environment variable.")
+        // BuildConfig field for API key (available at runtime)
+        buildConfigField "String", "TERMINAI_API_KEY", "\"$apiKey\""
     }
-    
-    buildConfigField "String", "TERMINAI_API_KEY", "\"$apiKey\""
-
-    // Conditional release signing: only activates when ALL required
-    // environment variables are present (set by GitHub Actions secrets).
-    // Without secrets, the release build remains unsigned (existing behavior).
-    def keystorePathEnv = System.getenv('TERMINAI_KEYSTORE_PATH')
-    def keystorePasswordEnv = System.getenv('TERMINAI_ANDROID_KEYSTORE_PASSWORD')
-    def keystoreAliasEnv = System.getenv('TERMINAI_ANDROID_KEY_ALIAS')
-    def keystoreKeyPasswordEnv = System.getenv('TERMINAI_ANDROID_KEY_PASSWORD')
-    def signingReady = keystorePathEnv && keystorePasswordEnv && keystoreAliasEnv && keystoreKeyPasswordEnv
 
     signingConfigs {
         release {
@@ -50,7 +54,6 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField "String", "TERMINAI_API_KEY", "\"$apiKey\""
             // Allow debug builds to work without API key (with warning)
             if (apiKey.isEmpty()) {
                 println "WARNING: TERMINAI_API_KEY is not set. Debug build will run without API key."
