@@ -318,6 +318,16 @@ The native Android host lives at `android/`. It is the future app container for 
 
 See `docs/android-native-host.md` for the full plan.
 
+### Android device setup
+
+When using a local TerminAI backend from the Android app:
+- Connect the phone and the backend host to the same Wi-Fi.
+- Start the server with `TERMINAI_BIND_ADDRESS=0.0.0.0` so it listens on all interfaces.
+- Find the backend host's LAN IP on the host machine with `ipconfig`, `hostname -I`, or `ipconfig getifaddr en0`.
+- Set `BACKEND_HOST` and `BACKEND_PORT` in the app to the LAN address and port, default `3000`.
+
+See `docs/android-network-adapter.md` for the implementation guide and LAN troubleshooting.
+
 TerminAI has one internal API bridge — not separate companion apps. The bridge reads `runtime/api-baseline.json` and `runtime/api-bridge-contract.json` to expose safe, audited capability invocation.
 
 | Endpoint | Method | Purpose |
