@@ -28,9 +28,9 @@ function getCommandTimeoutMs(): number {
   return Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : COMMAND_TIMEOUT_MS;
 }
 const WORKSPACE_ROOT = path.resolve(process.env.TERMINAI_WORKSPACE_ROOT || process.cwd());
-n// DEBUG_MODE: When set, logs blocked commands for monitoring before enforcing strict mode
+// DEBUG_MODE: When set, logs blocked commands for monitoring before enforcing strict mode
 const DEBUG_MODE = process.env.DEBUG_MODE === "true";
-n// TODO: Future enhancement - Move to containerized sandbox (Docker/chroot/user namespaces) for v2.0
+// TODO: Future enhancement - Move to containerized sandbox (Docker/chroot/user namespaces) for v2.0
 // This would provide stronger isolation by running commands in a restricted environment
 // with limited filesystem access and no network access by default.
 const TERMINAL_CWD_MARKER = "\u001eTERMINAI_CWD_44fb5948\u001e";
