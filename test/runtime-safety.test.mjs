@@ -66,6 +66,35 @@ test("workspace path resolver allows only paths inside the workspace root", () =
   assert.equal(isInsideWorkspace("../../outside.txt", root), false);
 });
 
+test("symlink traversal is blocked by workspace path validator", () => {
+  if (process.platform === "win32" && process.getuid === undefined) {
+    console.warn("Skipping symlink traversal assertion on this Windows environment: symlink creation is restricted.");
+    return;
+  }
+  const root = path.join(projectRoot, "workspace-root");
+  const target = path.join(projectRoot, "secret.txt");
+  fs.mkdirSync(root, { recursive: true });
+  fs.writeFileSync(target, "secret", "utf8");
+  const symlink = path.join(root, "escape-symlink");
+  try {
+    fs.unlinkSync(symlink);
+  } catch {}
+  try {
+    fs.symlinkSync(target, symlink);
+  } catch (error) {
+    if ((error?.code || "") !== "EEXIST") throw error;
+  }
+
+  assert.equal(isInsideWorkspace(symlink, root), false);
+  assert.throws(() => resolveWorkspacePathStrict("escape-symlink", root), /outside the Terminai workspace/);
+  assert.throws(() => resolveWorkspacePathStrict(target, root), /outside the Terminai workspace/);
+
+  try {
+    fs.unlinkSync(symlink);
+  } catch {}
+  fs.unlinkSync(target);
+});
+
 test("runtime manifest validation passes for current manifests", () => {
   const errors = validateAllRuntimeManifests(currentManifests(), projectRoot);
   assert.deepEqual(errors, []);
