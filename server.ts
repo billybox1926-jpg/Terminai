@@ -16,7 +16,7 @@ dotenv.config({ path: ".env" });
 dotenv.config({ path: ".env.local", override: true });
 
 // Initialize express app
-const app = express();
+export const app = express();
 const PORT = Number.parseInt(process.env.PORT ?? "3000", 10);
 const HOST = process.env.TERMINAI_BIND_ADDRESS ?? "127.0.0.1";
 const COMMAND_TIMEOUT_MS = Number.parseInt(process.env.TERMINAI_COMMAND_TIMEOUT_MS ?? "30000", 10);
@@ -26,20 +26,23 @@ function getCommandTimeoutMs(): number {
   const envTimeout = Number.parseInt(process.env.TERMINAI_COMMAND_TIMEOUT_MS ?? "", 10);
   return Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : COMMAND_TIMEOUT_MS;
 }
-const WORKSPACE_ROOT = path.resolve(process.env.TERMINAI_WORKSPACE_ROOT || process.cwd());
+// Workspace root resolved dynamically so tests can override env vars before requests.
+function getWorkspaceRoot(): string {
+  return path.resolve(process.env.TERMINAI_WORKSPACE_ROOT || process.cwd());
+}
 const TERMINAL_CWD_MARKER = "\u001eTERMINAI_CWD_44fb5948\u001e";
 const TERMINAL_OUTPUT_TRUNCATED = "... (output truncated)";
 
 // Body parser
 app.use(express.json());
 
-function loadAuthMiddleware() {
+function loadAuthMiddleware(): express.RequestHandler | undefined {
   const apiKey = process.env.TERMINAI_API_KEY?.trim();
-
+  
   if (!apiKey) {
     return;
   }
-
+  
   const prefix = process.env.TERMINAI_AUTH_HEADER?.trim() || "x-api-key";
   const headerName = prefix.toLowerCase();
 
@@ -58,14 +61,15 @@ function loadAuthMiddleware() {
 
 const authMiddleware: express.RequestHandler | undefined = loadAuthMiddleware();
 const appAny: any = app;
-function applyAuth(method: string, path: string, handler: express.RequestHandler) {
+function applyAuth(method: string, url: string, handler: express.RequestHandler) {
   if (!authMiddleware) {
-    return appAny[method](path, handler);
+    return appAny[method](url, handler);
   }
-  return appAny[method](path, authMiddleware, handler);
+  return appAny[method](url, authMiddleware, handler);
 }
 
-app.get("/api/system/stats", (req, res) => {
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok" });
 });
 
 // Lazy-loaded Gemini Client following guidance
@@ -91,22 +95,22 @@ function getGeminiClient(): GoogleGenAI {
 
 
 /** Returns true when targetPath is inside the configured workspace root, including symlink resolution. */
-function isInsideWorkspace(targetPath: string): boolean {
+function isInsideWorkspace(targetPath: string, workspaceRoot = getWorkspaceRoot()): boolean {
   let normalizedRoot;
   try {
-    normalizedRoot = fs.realpathSync(WORKSPACE_ROOT);
+    normalizedRoot = fs.realpathSync(workspaceRoot);
   } catch (error) {
     if (error?.code === "ENOENT") {
-      normalizedRoot = path.resolve(WORKSPACE_ROOT);
+      normalizedRoot = path.resolve(workspaceRoot);
     } else {
       throw error;
     }
   }
 
-  const absoluteTarget = path.resolve(targetPath);
+  const absoluteTarget = path.resolve(workspaceRoot, targetPath);
   let normalizedTarget = absoluteTarget;
   let remainder = absoluteTarget;
-  while (remainder !== normalizedRoot && !path.relative(path.resolve(WORKSPACE_ROOT), remainder).startsWith("..")) {
+  while (remainder !== normalizedRoot && !path.relative(path.resolve(workspaceRoot), remainder).startsWith("..")) {
     try {
       normalizedTarget = fs.realpathSync(remainder);
       break;
@@ -127,8 +131,8 @@ function isInsideWorkspace(targetPath: string): boolean {
 }
 
 /** Resolves a user supplied path against a cwd and clamps it to the workspace root. */
-function resolveWorkspacePath(inputPath: string | undefined, cwd = WORKSPACE_ROOT): string {
-  const base = isInsideWorkspace(cwd) ? path.resolve(cwd) : WORKSPACE_ROOT;
+function resolveWorkspacePath(inputPath: string | undefined, cwd = getWorkspaceRoot()): string {
+  const base = isInsideWorkspace(cwd) ? path.resolve(cwd) : getWorkspaceRoot();
   const resolved = inputPath ? path.resolve(base, inputPath) : base;
   if (!isInsideWorkspace(resolved)) {
     throw new Error("Access denied: path is outside the Terminai workspace.");
@@ -136,8 +140,8 @@ function resolveWorkspacePath(inputPath: string | undefined, cwd = WORKSPACE_ROO
   return resolved;
 }
 
-function resolveWorkspacePathStrict(inputPath: string | undefined, cwd = WORKSPACE_ROOT): string {
-  const base = isInsideWorkspace(cwd) ? path.resolve(cwd) : WORKSPACE_ROOT;
+function resolveWorkspacePathStrict(inputPath: string | undefined, cwd = getWorkspaceRoot()): string {
+  const base = isInsideWorkspace(cwd) ? path.resolve(cwd) : getWorkspaceRoot();
   const resolved = inputPath ? path.resolve(base, inputPath) : base;
   if (!isInsideWorkspace(resolved)) {
     throw new Error("Access denied: path is outside the Terminai workspace.");
@@ -146,7 +150,7 @@ function resolveWorkspacePathStrict(inputPath: string | undefined, cwd = WORKSPA
   try {
     const real = fs.realpathSync(resolved);
     const realRoot = fs.realpathSync(base);
-    if (!isInsideWorkspace(real)) {
+    if (!isInsideWorkspace(real, realRoot)) {
       throw new Error("Access denied: path is outside the Terminai workspace.");
     }
     return real;
@@ -164,7 +168,7 @@ function resolveWorkspacePathStrict(inputPath: string | undefined, cwd = WORKSPA
 
 /** Converts an absolute workspace path into the relative path used by frontend file APIs. */
 function toWorkspaceRelative(targetPath: string): string {
-  const relative = path.relative(WORKSPACE_ROOT, targetPath);
+  const relative = path.relative(getWorkspaceRoot(), targetPath);
   return relative === "" ? "." : relative;
 }
 
@@ -227,7 +231,7 @@ app.get("/api/system/stats", (req, res) => {
       console.error("Failed to fetch CPU model:", e);
     }
 
-    execFile("df", ["-h", WORKSPACE_ROOT], { timeout: 5000 }, (err, stdout) => {
+    execFile("df", ["-h", getWorkspaceRoot()], { timeout: 5000 }, (err, stdout) => {
       let diskInfo = { total: "10GB", used: "2GB", free: "8GB", percent: "20%" };
       try {
         if (!err && stdout) {
@@ -264,7 +268,7 @@ app.get("/api/system/stats", (req, res) => {
             release: osRelease,
             platform: os.platform()
           },
-          cwd: WORKSPACE_ROOT
+          cwd: getWorkspaceRoot()
         });
       } catch (sendError: any) {
         console.error("Failed to send stats response:", sendError);
@@ -282,7 +286,6 @@ app.get("/api/system/stats", (req, res) => {
 });
 
 // Secure Real Terminal Command Executor with Smart Directory Tracking
-const TERMINAL_WORKSPACE_ROOT = path.resolve(process.env.TERMINAI_WORKSPACE_ROOT || process.cwd());
 const DEFAULT_ALLOWED_COMMANDS = new Set([
   'ls','dir','tree','cat','head','tail','less','more','find',
   'cd','pwd',
@@ -447,7 +450,7 @@ app.post("/api/terminal/execute", (req, res) => {
   try {
     activeCwd = resolveWorkspacePath(cwd || ".");
   } catch {
-    activeCwd = WORKSPACE_ROOT;
+    activeCwd = getWorkspaceRoot();
   }
 
   const sanitizedCommand = sanitizeSensitiveCommand(command.trim());
@@ -606,7 +609,7 @@ app.post("/api/file-manager/list", (req, res) => {
     return res.status(400).json({ error: "Invalid path" });
   }
 
-  const baseDir = WORKSPACE_ROOT;
+  const baseDir = getWorkspaceRoot();
   let targetDir: string;
   try {
     targetDir = resolveWorkspacePathStrict(dir || ".", baseDir);
@@ -714,7 +717,7 @@ app.post("/api/file-manager/delete", (req, res) => {
   let resolvedPath: string;
   try {
     resolvedPath = resolveWorkspacePathStrict(targetPath);
-    if (resolvedPath === WORKSPACE_ROOT) throw new Error("Cannot delete workspace root");
+    if (resolvedPath === getWorkspaceRoot()) throw new Error("Cannot delete workspace root");
   } catch {
     console.warn(`[Sandbox] Blocked delete outside workspace/root: ${targetPath}`);
     return res.status(403).json({ error: "Access Denied: Deletion restricted." });
@@ -771,7 +774,7 @@ app.post("/api/file-manager/create-folder", (req, res) => {
 
 // Package manager helper - Query native installations of standard development CLI tools
 app.get("/api/package-manager/list", async (req, res) => {
-  const baseDir = WORKSPACE_ROOT;
+  const baseDir = getWorkspaceRoot();
   const manifestPath = path.join(baseDir, "runtime", "package-baseline.json");
 
   let tools: any[] = [];
@@ -836,7 +839,7 @@ function sanitizePackageName(name: string): string {
 }
 
 app.get("/api/package-manager/baseline", (_req, res) => {
-  const baseDir = WORKSPACE_ROOT;
+  const baseDir = getWorkspaceRoot();
   const manifestPath = path.join(baseDir, "runtime", "package-baseline.json");
   try {
     if (!fs.existsSync(manifestPath)) {
@@ -1132,7 +1135,7 @@ app.get("/api/runtime/api/status", (_req, res) => {
 
 const API_BRIDGE_CONTRACT_PATH = path.resolve(__dirname, "runtime", "api-bridge-contract.json");
 const API_AUDIT_LOG_PATH = path.resolve(
-  WORKSPACE_ROOT,
+  getWorkspaceRoot(),
   "terminai_api_audit.jsonl"
 );
 
@@ -1238,7 +1241,7 @@ function handleNotificationSend(payload: any): any {
 
 function handleStorageStatus(): any {
   return {
-    workspaceRoot: WORKSPACE_ROOT,
+    workspaceRoot: getWorkspaceRoot(),
     runtimeRoot: getRuntimeRoot(),
     source: "available",
   };
@@ -1423,7 +1426,7 @@ app.post("/api/runtime/api/invoke", (req, res) => {
 // -------------------------------------------------------
 
 const RUNTIME_STATE_PATH = path.resolve(
-  WORKSPACE_ROOT,
+  getWorkspaceRoot(),
   "terminai_runtime_state.json"
 );
 
@@ -1739,7 +1742,7 @@ function checkRuntimeBundleStatus(): any {
   return {
     bundle,
     runtimeRoot,
-    workspaceRoot: WORKSPACE_ROOT,
+    workspaceRoot: getWorkspaceRoot(),
     mode,
     bundleReady,
     assets: {
@@ -1927,7 +1930,7 @@ let deviceSettings = {
 };
 
 app.get("/api/device/build-status", (req, res) => {
-  const baseDir = WORKSPACE_ROOT;
+  const baseDir = getWorkspaceRoot();
   const telemetryPath = path.join(baseDir, "terminai_telemetry.json");
 
   let telemetryData = {
@@ -1969,7 +1972,7 @@ app.get("/api/device/build-status", (req, res) => {
 });
 
 app.post("/api/device/build-status", (req, res) => {
-  const baseDir = WORKSPACE_ROOT;
+  const baseDir = getWorkspaceRoot();
   const telemetryPath = path.join(baseDir, "terminai_telemetry.json");
   const { telemetry, device } = req.body;
 
