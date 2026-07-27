@@ -132,6 +132,78 @@ npx terminai
 
 `npx terminai` starts the production server on `http://localhost:3000`.
 
+## Android Development
+
+### Building the Android App
+
+Requirements:
+* Android Studio Hedgehog (2023.1.1) or newer
+* Android SDK 34
+* JDK 17
+* Connected Android device or emulator
+
+Build the app:
+```bash
+cd android
+./gradlew assembleDebug
+```
+
+The debug APK will be at `android/app/build/outputs/apk/debug/app-debug.apk`.
+
+### API Key Configuration
+
+The Android client requires an API key to authenticate with the TerminAI backend. The key is read at build time from:
+
+1. `gradle.properties` in the Android project root
+2. Environment variable `TERMINAI_API_KEY`
+
+**Example `gradle.properties`:**
+```properties
+TERMINAI_API_KEY=your-api-key-here
+```
+
+**Or via environment variable:**
+```bash
+export TERMINAI_API_KEY=your-api-key-here
+./gradlew assembleDebug
+```
+
+**Release builds require an API key.** If `TERMINAI_API_KEY` is missing, the build will fail with:
+```
+TERMINAI_API_KEY is required for release builds. Set it in gradle.properties or as an environment variable.
+```
+
+### Running Instrumentation Tests
+
+Instrumentation tests verify API key enforcement:
+
+```bash
+# With API key set
+export TERMINAI_API_KEY=test-api-key-123
+./gradlew connectedAndroidTest
+
+# Without API key (tests should show 401 responses)
+unset TERMINAI_API_KEY
+./gradlew connectedAndroidTest
+```
+
+The tests verify:
+* Requests without an API key receive `401 Unauthorized`
+* Requests with a valid API key receive `200 OK`
+* Errors are handled gracefully (no crashes)
+
+### CI Integration
+
+The `android-install-smoke.sh` and `android-install-smoke.ps1` scripts build, install, and run instrumentation tests:
+
+```bash
+# Bash
+TERMINAI_API_KEY=$API_KEY ./scripts/android-install-smoke.sh
+
+# PowerShell
+$env:TERMINAI_API_KEY = $env:API_KEY; .\scripts\android-install-smoke.ps1
+```
+
 ## Security
 
 ### Threat Model

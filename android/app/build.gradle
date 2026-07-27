@@ -20,6 +20,16 @@ android {
         }
     }
 
+    // Build-time safeguard for API key
+    def apiKey = project.findProperty("TERMINAI_API_KEY") as String? ?: System.getenv("TERMINAI_API_KEY") ?: ""
+    
+    // Fail fast for release builds if API key is missing
+    if (gradle.startParameter.taskRequests.any { it.name.contains("Release") || it.name.contains("assemble") } && apiKey.isEmpty()) {
+        throw new GradleException("TERMINAI_API_KEY is required for release builds. Set it in gradle.properties or as an environment variable.")
+    }
+    
+    buildConfigField "String", "TERMINAI_API_KEY", "\"$apiKey\""
+
     // Conditional release signing: only activates when ALL required
     // environment variables are present (set by GitHub Actions secrets).
     // Without secrets, the release build remains unsigned (existing behavior).
@@ -41,6 +51,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Allow debug builds to work without API key (with warning)
+            if (apiKey.isEmpty()) {
+                println "WARNING: TERMINAI_API_KEY is not set. Debug build will run without API key."
+            }
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -91,7 +107,18 @@ dependencies {
     implementation 'androidx.compose.material:material-icons-extended'
     implementation 'androidx.compose.runtime:runtime-livedata'
 
+    // Network dependencies for API client
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.squareup.okhttp3:logging-interceptor:4.12.0'
+
+    // JSON parsing
+    implementation 'com.squareup.moshi:moshi-kotlin:1.15.1'
+
+    // Test dependencies
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    androidTestImplementation 'androidx.test.runner:androidJUnitRunner'
+    androidTestImplementation 'androidx.test.services:test-services:1.5.0'
+    androidTestImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1'
 }
