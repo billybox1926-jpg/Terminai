@@ -2,7 +2,9 @@ apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 
 // Build-time safeguard for API key
-def apiKey = project.findProperty("TERMINAI_API_KEY") as String ?: System.getenv("TERMINAI_API_KEY") ?: ""
+def apiKey = project.hasProperty("TERMINAI_API_KEY") 
+    ? project.property("TERMINAI_API_KEY") 
+    : System.getenv("TERMINAI_API_KEY") ?: ""
 
 // Fail fast for release builds if API key is missing
 def isReleaseBuild = gradle.startParameter.taskNames.any { it.toLowerCase().contains("release") }
@@ -24,6 +26,12 @@ android {
     compileSdk 34
     buildToolsVersion '34.0.0'
 
+    buildFeatures {
+        viewBinding true
+        compose true
+        buildConfig true
+    }
+
     defaultConfig {
         applicationId 'com.billybox.terminai'
         minSdk 26
@@ -38,7 +46,7 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         // BuildConfig field for API key (available at runtime)
-        buildConfigField "String", "TERMINAI_API_KEY", "\"$apiKey\""
+        buildConfigField "String", "TERMINAI_API_KEY", "\"${apiKey}\""
     }
 
     signingConfigs {
@@ -75,12 +83,6 @@ android {
 
     kotlinOptions {
         jvmTarget = '17'
-    }
-
-    buildFeatures {
-        viewBinding true
-        compose true
-        buildConfig true
     }
 
     composeOptions {
