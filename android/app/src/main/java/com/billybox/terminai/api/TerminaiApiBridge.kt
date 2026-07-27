@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.util.Log
 import com.billybox.terminai.runtime.RuntimeManager
 
 /**
@@ -89,8 +90,18 @@ class TerminaiApiBridge(private val context: Context) {
 
     // ── Capability handlers ────────────────────────────────────────────
 
+    /**
+     * Reads device battery status.
+     *
+     * Currently this method returns simulated data. To implement real battery status,
+     * you would need to register a BroadcastReceiver for ACTION_BATTERY_CHANGED
+     * and query BatteryManager for battery level, voltage, temperature, and charging state.
+     *
+     * @return InvokeResult with battery level, temperature, and charging state.
+     *         Currently returns simulated values with "simulated" status.
+     */
     private fun batteryRead(): InvokeResult {
-        // TODO: Use BatteryManager for real battery status
+        Log.w("TerminaiAPI", "batteryRead() called - returning simulated battery status. To implement, register BroadcastReceiver for ACTION_BATTERY_CHANGED")
         return InvokeResult(true, "simulated", mapOf(
             "level" to 82,
             "temperature" to "28.5 °C",
@@ -99,23 +110,56 @@ class TerminaiApiBridge(private val context: Context) {
         ), "Battery status (simulated). Use BatteryManager for real data.")
     }
 
+    /**
+     * Reads clipboard content.
+     *
+     * Currently this method returns simulated data. To implement real clipboard access,
+     * you would need to use ClipboardManager with a proper ClipboardManager.Listener
+     * to read the primary clip content.
+     *
+     * @return InvokeResult with clipboard content.
+     *         Currently returns simulated placeholder text with "simulated" status.
+     */
     private fun clipboardRead(): InvokeResult {
+        Log.w("TerminaiAPI", "clipboardRead() called - returning simulated clipboard. To implement, use ClipboardManager")
         return InvokeResult(true, "simulated", mapOf(
             "content" to "TerminAI clipboard placeholder",
             "source" to "simulated"
         ), "Clipboard read (simulated). Use ClipboardManager for real data.")
     }
 
+    /**
+     * Writes content to clipboard.
+     *
+     * Currently this method returns simulated data. To implement real clipboard write,
+     * you would need to use ClipboardManager.setPrimaryClip() with a ClipData object.
+     *
+     * @param payload Map containing "content" key with text to copy.
+     * @return InvokeResult indicating success with the written content.
+     *         Currently returns simulated response with "simulated" status.
+     */
     private fun clipboardWrite(payload: Map<String, Any?>): InvokeResult {
         val content = payload["content"] as? String ?: ""
+        Log.w("TerminaiAPI", "clipboardWrite() called with content: '$content' - returning simulated result. To implement, use ClipboardManager.setPrimaryClip()")
         return InvokeResult(true, "simulated", mapOf(
             "content" to content,
             "source" to "simulated"
         ), "Clipboard write (simulated). Use ClipboardManager for real data.")
     }
 
+    /**
+     * Sends a notification to the user.
+     *
+     * Currently this method returns simulated data. To implement real notifications,
+     * you would need to use NotificationManager.notify() with a properly built
+     * Notification object. This requires NOTIFICATION permission on Android 13+.
+     *
+     * @param payload Map containing "title" and "body" keys for notification content.
+     * @return InvokeResult with "sent" flag and notification details.
+     *         Currently returns simulated response with "simulated" status and sent=false.
+     */
     private fun notificationSend(payload: Map<String, Any?>): InvokeResult {
-        // TODO: Use NotificationManager for real notifications
+        Log.w("TerminaiAPI", "notificationSend() called - native notification bridge not yet active. To implement, use NotificationManager.notify()")
         return InvokeResult(true, "simulated", mapOf(
             "sent" to false,
             "title" to (payload["title"] ?: "TerminAI"),
@@ -123,6 +167,9 @@ class TerminaiApiBridge(private val context: Context) {
         ), "Native notification bridge not yet active. Notification logged.")
     }
 
+    /**
+     * Returns storage paths for workspace, runtime, and state directories.
+     */
     private fun storageStatus(): InvokeResult {
         return InvokeResult(true, "ok", mapOf(
             "workspaceRoot" to runtimeManager.workspaceRoot.absolutePath,
@@ -131,6 +178,12 @@ class TerminaiApiBridge(private val context: Context) {
         ), "Storage status.")
     }
 
+    /**
+     * Validates a URL or intent string.
+     *
+     * @param payload Map containing "url" key with the URL or intent to validate.
+     * @return InvokeResult with validated URL and validity flag.
+     */
     private fun intentValidate(payload: Map<String, Any?>): InvokeResult {
         val url = payload["url"] as? String ?: ""
         val valid = url.startsWith("http://") || url.startsWith("https://") || url.startsWith("intent://")
@@ -138,6 +191,12 @@ class TerminaiApiBridge(private val context: Context) {
             if (valid) "URL format valid." else "Invalid URL format.")
     }
 
+    /**
+     * Triggers a vibration pulse pattern.
+     *
+     * @param payload Map containing "pattern" key with list of Long values for vibration timing.
+     * @return InvokeResult indicating success or simulated fallback.
+     */
     private fun vibrationPulse(payload: Map<String, Any?>): InvokeResult {
         val pattern = (payload["pattern"] as? List<*>)?.mapNotNull { (it as? Number)?.toLong() } ?: listOf(200L)
         return try {
@@ -156,11 +215,23 @@ class TerminaiApiBridge(private val context: Context) {
             }
             InvokeResult(true, "ok", mapOf("pattern" to pattern), "Vibration executed.")
         } catch (e: Exception) {
+            Log.w("TerminaiAPI", "vibrationPulse() failed: ${e.message}", e)
             InvokeResult(true, "simulated", mapOf("pattern" to pattern), "Vibration simulated: ${e.message}")
         }
     }
 
+    /**
+     * Returns network information about the device.
+     *
+     * Currently this method returns simulated data. To implement real network info,
+     * you would need to use ConnectivityManager and NetworkCapabilities to query
+     * active network, bandwidth, and connection type.
+     *
+     * @return InvokeResult with platform, device, and manufacturer info.
+     *         Currently returns simulated values with "simulated" status.
+     */
     private fun networkInfoRead(): InvokeResult {
+        Log.w("TerminaiAPI", "networkInfoRead() called - returning simulated data. To implement, use ConnectivityManager")
         return InvokeResult(true, "simulated", mapOf(
             "platform" to "Android ${Build.VERSION.RELEASE}",
             "device" to Build.MODEL,
@@ -169,7 +240,18 @@ class TerminaiApiBridge(private val context: Context) {
         ), "Network info (simulated). Use ConnectivityManager for real data.")
     }
 
+    /**
+     * Returns simulated sensor data.
+     *
+     * Currently this method returns simulated data. To implement real sensor data,
+     * you would need to register SensorEventListener and query SensorManager
+     * for accelerometer, gyroscope, light, and proximity sensors.
+     *
+     * @return InvokeResult with simulated accelerometer, gyroscope, light, and proximity values.
+     *         Currently returns simulated values with "simulated" source.
+     */
     private fun sensorSnapshot(): InvokeResult {
+        Log.w("TerminaiAPI", "sensorSnapshot() called - returning simulated data. To implement, use SensorManager")
         return InvokeResult(true, "simulated", mapOf(
             "accelerometer" to mapOf("x" to 0, "y" to 0, "z" to 9.8),
             "gyroscope" to mapOf("x" to 0, "y" to 0, "z" to 0),
@@ -179,16 +261,38 @@ class TerminaiApiBridge(private val context: Context) {
         ), "Sensor data is simulated. Native sensor bridge not yet active.")
     }
 
+    /**
+     * Returns boot/startup enabled status.
+     *
+     * Currently this method returns simulated data. To implement real boot status,
+     * you would need to check for RECEIVE_BOOT_COMPLETED permission and query
+     * PackageManager for installed boot receiver components.
+     *
+     * @return InvokeResult with enabled flag.
+     *         Currently returns simulated values with "simulated" status.
+     */
     private fun bootStartupStatus(): InvokeResult {
+        Log.w("TerminaiAPI", "bootStartupStatus() called - returning simulated data. To implement, check RECEIVE_BOOT_COMPLETED permission")
         return InvokeResult(true, "simulated", mapOf("enabled" to false),
             "Boot startup status (simulated). Native boot receiver not yet active.")
     }
 
+    /**
+     * Returns file picker availability status.
+     *
+     * This method is currently unavailable because it requires native Android
+     * permission flow (READ_EXTERNAL_STORAGE or use of Activity Result APIs).
+     *
+     * @return InvokeResult with "unavailable" status.
+     */
     private fun filePickerStatus(): InvokeResult {
         return InvokeResult(true, "unavailable", null,
             "File picker requires native Android permission flow.")
     }
 
+    /**
+     * Returns available script shortcut categories.
+     */
     private fun scriptShortcutsList(): InvokeResult {
         return InvokeResult(true, "ok", mapOf(
             "categories" to listOf("system", "network", "development", "utility")

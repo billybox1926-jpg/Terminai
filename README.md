@@ -132,6 +132,139 @@ npx terminai
 
 `npx terminai` starts the production server on `http://localhost:3000`.
 
+## Android Development
+
+### Building the Android App
+
+Requirements:
+* Android Studio Hedgehog (2023.1.1) or newer
+* Android SDK 34
+* JDK 17
+* Connected Android device or emulator
+
+Build the app:
+```bash
+cd android
+./gradlew assembleDebug
+```
+
+The debug APK will be at `android/app/build/outputs/apk/debug/app-debug.apk`.
+
+### API Key Configuration
+
+The Android client requires an API key to authenticate with the TerminAI backend. The key is read at build time from:
+
+1. `gradle.properties` in the Android project root
+2. Environment variable `TERMINAI_API_KEY`
+
+**Example `gradle.properties`:**
+```properties
+TERMINAI_API_KEY=your-api-key-here
+```
+
+**Or via environment variable:**
+```bash
+export TERMINAI_API_KEY=your-api-key-here
+./gradlew assembleDebug
+```
+
+**Release builds require an API key.** If `TERMINAI_API_KEY` is missing, the build will fail with:
+```
+TERMINAI_API_KEY is required for release builds. Set it in gradle.properties or as an environment variable.
+```
+
+### Running Instrumentation Tests
+
+Instrumentation tests verify API key enforcement:
+
+```bash
+# With API key set
+export TERMINAI_API_KEY=test-api-key-123
+./gradlew connectedAndroidTest
+
+# Without API key (tests should show 401 responses)
+unset TERMINAI_API_KEY
+./gradlew connectedAndroidTest
+```
+
+The tests verify:
+* Requests without an API key receive `401 Unauthorized`
+* Requests with a valid API key receive `200 OK`
+* Errors are handled gracefully (no crashes)
+
+### CI Integration
+
+The `android-install-smoke.sh` and `android-install-smoke.ps1` scripts build, install, and run instrumentation tests:
+
+```bash
+# Bash
+TERMINAI_API_KEY=$API_KEY ./scripts/android-install-smoke.sh
+
+# PowerShell
+$env:TERMINAI_API_KEY = $env:API_KEY; .\scripts\android-install-smoke.ps1
+```
+
+## Security
+
+### Threat Model
+
+TerminAI is a **local development tool** designed for single-user environments. It is **not** a public-facing service and should not be exposed to the internet.
+
+**Key risks to be aware of:**
+
+- **Remote code execution** via package installation endpoints. The `/api/package-manager/install` and `/api/runtime/bootstrap/install` routes build commands based on manifest data; these were hardened in [#48](https://github.com/billybox1926-jpg/Terminai/issues/48) to never return raw command strings and to enforce the `--` delimiter to prevent flag injection.
+- **Path traversal** in file operations. The file manager restricts all read/write/delete operations to a configured workspace root (`TERMINAI_WORKSPACE_ROOT`).
+- **Command injection** in terminal execution. The `/api/terminal/execute` endpoint runs commands in a sandboxed environment with shell metacharacter filtering.
+
+**Never expose this server publicly** without authentication, a reverse proxy with IP whitelisting, and proper firewall rules.
+
+### Environment Variables
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `TERMINAI_AUTO_BOOTSTRAP` | No | `false` | When `true`, automatically installs missing baseline packages on startup. **Set to `false` in production** to prevent unexpected package installations. |
+| `NODE_ENV` | No | `development` | Set to `production` to disable debug endpoints and enable production optimizations. |
+| `PORT` | No | `3000` | Server port. Override if the default is in use. |
+| `TERMINAI_API_KEY` | No | - | When set, enables API authentication. Requests without a valid key receive `401 Unauthorized`. |
+| `TERMINAI_BIND_ADDRESS` | No | `127.0.0.1` | Bind address. Defaults to localhost-only. Set to `0.0.0.0` only if intentionally exposing on the local network. |
+| `TERMINAI_WORKSPACE_ROOT` | No | Current working directory | Root directory exposed to terminal and file APIs. |
+| `OPENROUTER_API_KEY` | No | - | Enables AI command optimization via OpenRouter. |
+| `GEMINI_API_KEY` | No | - | Fallback AI command optimization via Gemini. |
+
+**Example `.env.local` for safe local development:**
+
+```env
+TERMINAI_AUTO_BOOTSTRAP=false
+NODE_ENV=development
+PORT=3000
+TERMINAI_API_KEY=
+TERMINAI_BIND_ADDRESS=127.0.0.1
+TERMINAI_WORKSPACE_ROOT=./workspace
+```
+
+### Network Restrictions
+
+- **Bind to localhost only** by default (`TERMINAI_BIND_ADDRESS=127.0.0.1`). The server does not accept external connections unless explicitly configured.
+- If network access is required, use a **reverse proxy** (e.g., nginx, Caddy) with **IP whitelisting** to limit access.
+- Consider using a **firewall** or **VPN** to restrict access in multi-tenant environments.
+- Avoid using TerminAI in shared or multi-tenant environments without proper isolation.
+
+### Sandbox & Isolation
+
+- **Ephemeral package installation**: Packages are installed into randomized temporary directories per request. The workspace root remains isolated from system locations.
+- **Command execution safety**: `child_process.spawn` uses `shell: false` and the `--` delimiter is enforced in `buildInstallCommand` to prevent flag injection attacks (see [#48](https://github.com/billybox1926-jpg/Terminai/issues/48)).
+- **File manager isolation**: All file operations are scoped to `TERMINAI_WORKSPACE_ROOT`. Path traversal attempts (`../`) are blocked and return `403 Forbidden`.
+- **Terminal sandbox**: The execute endpoint filters shell metacharacters and blocks dangerous patterns (e.g., `rm -rf /`, `cat /etc/passwd`).
+
+### Known Limitations
+
+- **Arbitrary command execution**: The `/api/terminal/execute` endpoint runs commands in your shell context. This is inherently risky; treat it as a local development console, not a public API.
+- **No rate limiting**: There is no built-in rate limiting or request throttling.
+- **No authentication by default**: API endpoints are unrestricted on localhost. Set `TERMINAI_API_KEY` to enable authentication.
+- **Host package manager dependency**: Relies on the host's package manager (apt, pkg, etc.). Keep these up to date.
+- **Resource limits**: Large dependency trees can cause timeouts (default 60s). Adjust `TERMINAI_COMMAND_TIMEOUT_MS` if needed.
+- **Security hardening**: Comprehensive integration tests for security invariants were added in [#49](https://github.com/billybox1926-jpg/Terminai/issues/49).
+
 ## Build and release artifacts
 
 GitHub Actions is the official build gate for TerminAI. Local builds are useful for development, but release artifacts should come from Actions runs on GitHub. The web gate now validates runtime manifests, runs real Node tests, and smoke-tests command/file API safety before artifacts are trusted.

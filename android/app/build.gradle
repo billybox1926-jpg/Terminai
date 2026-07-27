@@ -1,12 +1,36 @@
-plugins {
-    id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+// Build-time safeguard for API key
+def apiKey = project.hasProperty("TERMINAI_API_KEY") 
+    ? project.property("TERMINAI_API_KEY") 
+    : System.getenv("TERMINAI_API_KEY") ?: ""
+
+// Fail fast for release builds if API key is missing
+def isReleaseBuild = gradle.startParameter.taskNames.any { it.toLowerCase().contains("release") }
+if (isReleaseBuild && apiKey.isEmpty()) {
+    throw new GradleException("TERMINAI_API_KEY is required for release builds. Set it in gradle.properties or as an environment variable.")
 }
+
+// Conditional release signing: only activates when ALL required
+// environment variables are present (set by GitHub Actions secrets).
+// Without secrets, the release build remains unsigned (existing behavior).
+def keystorePathEnv = System.getenv('TERMINAI_KEYSTORE_PATH')
+def keystorePasswordEnv = System.getenv('TERMINAI_ANDROID_KEYSTORE_PASSWORD')
+def keystoreAliasEnv = System.getenv('TERMINAI_ANDROID_KEY_ALIAS')
+def keystoreKeyPasswordEnv = System.getenv('TERMINAI_ANDROID_KEY_PASSWORD')
+def signingReady = keystorePathEnv && keystorePasswordEnv && keystoreAliasEnv && keystoreKeyPasswordEnv
 
 android {
     namespace 'com.billybox.terminai'
     compileSdk 34
     buildToolsVersion '34.0.0'
+
+    buildFeatures {
+        viewBinding true
+        compose true
+        buildConfig true
+    }
 
     defaultConfig {
         applicationId 'com.billybox.terminai'
@@ -18,16 +42,12 @@ android {
         vectorDrawables {
             useSupportLibrary true
         }
-    }
 
-    // Conditional release signing: only activates when ALL required
-    // environment variables are present (set by GitHub Actions secrets).
-    // Without secrets, the release build remains unsigned (existing behavior).
-    def keystorePathEnv = System.getenv('TERMINAI_KEYSTORE_PATH')
-    def keystorePasswordEnv = System.getenv('TERMINAI_ANDROID_KEYSTORE_PASSWORD')
-    def keystoreAliasEnv = System.getenv('TERMINAI_ANDROID_KEY_ALIAS')
-    def keystoreKeyPasswordEnv = System.getenv('TERMINAI_ANDROID_KEY_PASSWORD')
-    def signingReady = keystorePathEnv && keystorePasswordEnv && keystoreAliasEnv && keystoreKeyPasswordEnv
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // BuildConfig field for API key (available at runtime)
+        buildConfigField "String", "TERMINAI_API_KEY", "\"${apiKey}\""
+    }
 
     signingConfigs {
         release {
@@ -41,6 +61,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Allow debug builds to work without API key (with warning)
+            if (apiKey.isEmpty()) {
+                println "WARNING: TERMINAI_API_KEY is not set. Debug build will run without API key."
+            }
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -57,11 +83,6 @@ android {
 
     kotlinOptions {
         jvmTarget = '17'
-    }
-
-    buildFeatures {
-        viewBinding true
-        compose true
     }
 
     composeOptions {
@@ -91,7 +112,26 @@ dependencies {
     implementation 'androidx.compose.material:material-icons-extended'
     implementation 'androidx.compose.runtime:runtime-livedata'
 
+    // Network dependencies for API client
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.squareup.okhttp3:logging-interceptor:4.12.0'
+
+    // JSON parsing
+    implementation 'com.squareup.moshi:moshi-kotlin:1.15.1'
+
+    // Networking via Retrofit + OkHttp + Coroutines
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+    implementation 'com.squareup.retrofit2:converter-moshi:2.9.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+
+    // Persistent settings
+    implementation 'androidx.datastore:datastore-preferences:1.0.0'
+
+    // Test dependencies
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    androidTestImplementation 'androidx.test:runner:1.5.2'
+    androidTestImplementation 'androidx.test.services:test-services:1.5.0'
+    androidTestImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1'
 }

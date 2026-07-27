@@ -91,6 +91,30 @@ class RuntimeManager(private val context: Context) {
         File(stateDir, "first_run_complete").writeText(System.currentTimeMillis().toString())
     }
 
+    /**
+     * Save a workspace URI for persistence across app sessions.
+     */
+    fun setPersistedWorkspaceUri(uri: String) {
+        val sharedPref = context.getSharedPreferences("terminai_prefs", Context.MODE_PRIVATE)
+        sharedPref.edit().putString("persisted_workspace_uri", uri).apply()
+    }
+
+    /**
+     * Check if a persisted workspace URI has been saved.
+     */
+    fun hasPersistedWorkspaceUri(): Boolean {
+        val sharedPref = context.getSharedPreferences("terminai_prefs", Context.MODE_PRIVATE)
+        return !sharedPref.getString("persisted_workspace_uri", "").isNullOrEmpty()
+    }
+
+    /**
+     * Retrieve the persisted workspace URI.
+     */
+    fun getPersistedWorkspaceUri(): String? {
+        val sharedPref = context.getSharedPreferences("terminai_prefs", Context.MODE_PRIVATE)
+        return sharedPref.getString("persisted_workspace_uri", null)
+    }
+
     private fun extractJsonString(json: String, key: String): String? {
         val pattern = "\"$key\"\\s*:\\s*\"([^\"]+)\"".toRegex()
         return pattern.find(json)?.groupValues?.get(1)

@@ -94,10 +94,21 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          SMOKE_PORT=3099 NODE_ENV=production TERMINAI_COMMAND_TIMEOUT_MS=100 npm run start > server.log 2>&1 &
-          SERVER_PID=$!
-          SMOKE_PORT=3099 NODE_ENV=production TERMINAI_COMMAND_TIMEOUT_MS=100 npm run smoke:runtime
-          kill ${SERVER_PID} 2>/dev/null || true
+          # Defensive cleanup: ensure port 3099 is free before starting (prevents flaky CI)
+          echo "Checking for processes on port 3099..."
+          if lsof -ti:3099 > /dev/null 2>&1; then
+            echo "Port 3099 is occupied. Killing existing process..."
+            lsof -ti:3099 | xargs kill -9 || true
+          else
+            echo "Port 3099 is free."
+          fi
+
+          # Start the smoke test (which internally manages its own server lifecycle)
+          SMOKE_PORT=3099 \
+          NODE_ENV=production \
+          TERMINAI_API_KEY=ci-dummy-key \
+          TERMINAI_COMMAND_TIMEOUT_MS=100 \
+          npm run smoke:runtime
 
       - name: Upload production server logs
         if: always()

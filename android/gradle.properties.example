@@ -1,0 +1,24 @@
+# TerminAI Android Build Configuration Example
+# Copy this file to gradle.properties and fill in your values
+
+# API Key for TerminAI backend authentication
+# Required for release builds, optional for debug builds
+# Get your key from the TerminAI server configuration
+TERMINAI_API_KEY=your-api-key-here
+
+# Backend server URL (for development/testing)
+# Default: http://10.0.2.2:3000 (Android emulator localhost)
+# Use http://127.0.0.1:3000 for physical devices
+TERMINAI_BACKEND_URL=http://10.0.2.2:3000
+
+# Android SDK configuration
+android.useAndroidX=true
+android.enableJetifier=true
+
+# Kotlin configuration
+kotlin.code.style=official
+
+# Build configuration
+org.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+org.gradle.parallel=true
+org.gradle.caching=true

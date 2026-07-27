@@ -4,16 +4,29 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+import android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.billybox.terminai.api.TerminaiApiBridge
+import com.billybox.terminai.api.TerminaiApiService
+import com.billybox.terminai.api.CommandRequest
+import com.billybox.terminai.api.apiService
+import com.billybox.terminai.settings.ServerConfigActivity
 import com.billybox.terminai.dashboard.DashboardActivity
 import com.billybox.terminai.runtime.RuntimeManager
 import com.billybox.terminai.runtime.RuntimeBundleVerifier
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -35,6 +48,24 @@ class MainActivity : AppCompatActivity() {
 
     private var lastHealthReport: String = ""
     private lateinit var reportText: TextView
+    private lateinit var commandInput: EditText
+    private lateinit var backendOutput: TextView
+
+    private val pickWorkspace = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        uri?.let {
+            try {
+                contentResolver.takePersistableUriPermission(
+                    it,
+                    FLAG_GRANT_READ_URI_PERMISSION or FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                runtimeManager.setPersistedWorkspaceUri(it.toString())
+                Toast.makeText(this, "Workspace folder saved", Toast.LENGTH_SHORT).show()
+                updateStatusDisplay()
+            } catch (e: Exception) {
+                Toast.makeText(this, "Failed to access folder: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,8 +79,17 @@ class MainActivity : AppCompatActivity() {
         runtimeManager.ensureRuntimeDirectories()
         updateStatusDisplay()
 
+        commandInput = findViewById(R.id.et_backend_command)
+        backendOutput = findViewById(R.id.tv_backend_output)
+
         findViewById<Button>(R.id.btn_run_health_check).setOnClickListener {
             runHealthCheck()
+        }
+
+        if (!runtimeManager.hasPersistedWorkspaceUri()) {
+            showWorkspacePickerExplanation {
+                pickWorkspace.launch(null)
+            }
         }
 
         findViewById<Button>(R.id.btn_copy_report).setOnClickListener {
@@ -74,6 +114,14 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btn_open_dashboard).setOnClickListener {
             openDashboard()
+        }
+
+        findViewById<Button>(R.id.btn_open_server_config).setOnClickListener {
+            startActivity(Intent(this, ServerConfigActivity::class.java))
+        }
+
+        findViewById<Button>(R.id.btn_run_backend_command).setOnClickListener {
+            runBackendCommand()
         }
     }
 
@@ -251,12 +299,55 @@ class MainActivity : AppCompatActivity() {
         startActivity(Intent(this, DashboardActivity::class.java))
     }
 
+    private fun runBackendCommand() {
+        val raw = commandInput.text.toString().trim()
+        if (raw.isEmpty()) {
+            Toast.makeText(this, "Enter a command", Toast.LENGTH_SHORT).show()
+            return
+        }
+        backendOutput.text = "Sending: $raw"
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val response = apiService().execute(CommandRequest(raw))
+                val output = buildString {
+                    appendLine("Command: $raw")
+                    if (!response.output.isNullOrBlank()) appendLine(response.output.trim())
+                    if (!response.error.isNullOrBlank()) appendLine("err: ${response.error.trim()}")
+                    appendLine("exitCode=${response.exitCode ?: "unknown"}")
+                    if (response.truncated == true) appendLine("truncated=true")
+                }.trim()
+                withContext(Dispatchers.Main) {
+                    backendOutput.text = output
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    backendOutput.text = "Failed: ${e.message}"
+                }
+            }
+        }
+    }
+
     private fun showDialog(title: String, message: String) {
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle(title)
             .setMessage(message)
             .setPositiveButton("OK", null)
             .show()
+    }
+
+    private fun showWorkspacePickerExplanation(onContinue: () -> Unit) {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Workspace folder")
+            .setMessage("TerminAI needs a folder to store workspaces and configuration. You can pick a shared folder now.")
+            .setPositiveButton("Choose folder") { _, _ -> onContinue() }
+            .setNegativeButton("Skip") { _, _ ->
+                Toast.makeText(this, "You can pick a workspace folder later from settings", Toast.LENGTH_LONG).show()
+            }
+            .show()
+    }
+
+    private fun pickWorkspaceFolder() {
+        pickWorkspace.launch(null)
     }
 
     @Suppress("DEPRECATION")
