@@ -6,6 +6,7 @@ import okhttp3.*
 import okhttp3.logging.HttpLoggingInterceptor
 import org.json.JSONObject
 import java.io.IOException
+import java.time.Duration
 
 /**
  * TerminAI API Client — handles authenticated requests to the TerminAI backend.
@@ -29,7 +30,7 @@ class TerminaiApiClient(
             else HttpLoggingInterceptor.Level.NONE
         })
         .addInterceptor(ApiKeyInterceptor(apiKey))
-        .callTimeout(java.util.concurrent.TimeUnit.SECONDS.toMillis(timeoutSeconds))
+        .callTimeout(Duration.ofSeconds(timeoutSeconds))
         .build()
 
     /**
