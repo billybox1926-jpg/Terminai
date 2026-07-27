@@ -2,6 +2,8 @@ import { afterAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import app from "../server.ts";
 import { TEST_ROOT, disposeTestWorkspace } from "./setup";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 afterAll(() => disposeTestWorkspace());
 
@@ -52,6 +54,73 @@ describe("POST /api/terminal/execute", () => {
       const res = await request(app).post("/api/terminal/execute").send({ command: cmd });
       const commandFailed = typeof res.body.code === "number" && res.body.code !== 0;
       expect(res.status >= 400 || commandFailed).toBe(true);
+    }
+  });
+
+  it("blocks command substitution/backticks", async () => {
+    const cases = ["echo $(cat /etc/passwd)", "echo `cat /etc/passwd`"];
+    for (const cmd of cases) {
+      const res = await request(app).post("/api/terminal/execute").send({ command: cmd });
+      const commandFailed = typeof res.body.code === "number" && res.body.code !== 0;
+      expect(res.status >= 400 || commandFailed).toBe(true);
+    }
+  });
+
+  it("blocks unquoted env-var expansion pointing outside workspace", async () => {
+    const cmd = "cat $HOME/.ssh/id_rsa";
+    const res = await request(app).post("/api/terminal/execute").send({ command: cmd });
+    const commandFailed = typeof res.body.code === "number" && res.body.code !== 0;
+    expect(res.status >= 400 || commandFailed).toBe(true);
+  });
+
+  it("blocks sed/awk path traversal outside workspace", async () => {
+    const cases = [
+      "sed -i 's/a/b/' ../../../etc/passwd",
+      "awk '{print $0}' ../../../etc/passwd",
+    ];
+    for (const cmd of cases) {
+      const res = await request(app).post("/api/terminal/execute").send({ command: cmd });
+      const blockedByArgValidation = res.status === 403 || res.status === 400 ||
+        (typeof res.body.code === "number" && res.body.code === 126);
+      expect(blockedByArgValidation).toBe(true);
+    }
+  });
+
+  it("blocks find -exec style abuse", async () => {
+    const cmd = "find . -name x -exec cat /etc/passwd \\;";
+    const res = await request(app).post("/api/terminal/execute").send({ command: cmd });
+    const commandFailed = typeof res.body.code === "number" && res.body.code !== 0;
+    expect(res.status >= 400 || commandFailed).toBe(true);
+  });
+
+  it("blocks nested quoting/semicolon escape", async () => {
+    const cmd = "cat \"/workspace/foo\";cat \"/etc/passwd\"";
+    const res = await request(app).post("/api/terminal/execute").send({ command: cmd });
+    const commandFailed = typeof res.body.code === "number" && res.body.code !== 0;
+    expect(res.status >= 400 || commandFailed).toBe(true);
+  });
+
+  it("blocks symlink escape to outside workspace", async () => {
+    const workspace = TEST_ROOT;
+    const targetPath = path.join(workspace, "outside.txt");
+    const symlinkPath = path.join(workspace, "inside-link.txt");
+    try {
+      fs.writeFileSync(targetPath, "secret");
+      try { fs.unlinkSync(symlinkPath); } catch {}
+      try {
+        fs.symlinkSync(targetPath, symlinkPath);
+      } catch {
+        // Skip on environments that block symlink creation (Windows without privilege).
+        expect(true).toBe(true);
+        return;
+      }
+
+      const res = await request(app).post("/api/terminal/execute").send({ command: `cat ${symlinkPath}` });
+      const commandFailed = typeof res.body.code === "number" && res.body.code !== 0;
+      expect(res.status >= 400 || commandFailed).toBe(true);
+    } finally {
+      try { fs.unlinkSync(symlinkPath); } catch {}
+      try { fs.unlinkSync(targetPath); } catch {}
     }
   });
 });
@@ -123,8 +192,6 @@ describe("File manager route security", () => {
 
 describe("Rate limiting", () => {
   it("health check is not rate-limited", async () => {
-    // Rate limiting is disabled in test mode via NODE_ENV=test
-    // This test verifies the endpoint works normally
     const res = await request(app).get("/api/health");
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: "ok" });
