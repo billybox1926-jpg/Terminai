@@ -36,6 +36,22 @@ Install:
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
+## Connecting to the Backend
+
+1. Start the backend from the repo root:
+   ```bash
+   npm run start
+   ```
+2. Find your host machine's LAN IP:
+   - Windows: `ipconfig`
+   - macOS/Linux: `ifconfig` or `ip a`
+3. In the app, open **Server Configuration**:
+   - Host/IP: your PC LAN IP (or `10.0.2.2` for emulator)
+   - Port: `3099` unless changed
+   - API Key: optional unless the backend requires auth
+4. Tap **Test Connection**, then **Save**.
+5. Use the main command input to send runtime commands over HTTP.
+
 ## Troubleshooting
 
 * If the backend is needed, run `npm run dev` from the repo root

@@ -49,5 +49,11 @@
             android:label="Dashboard"
             android:theme="@style/Theme.TerminAI" />
 
+        <activity
+            android:name=".settings.ServerConfigActivity"
+            android:exported="false"
+            android:label="Server Configuration"
+            android:theme="@style/Theme.TerminAI" />
+
     </application>
 </manifest>
