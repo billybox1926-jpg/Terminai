@@ -551,6 +551,21 @@ app.post("/api/terminal/execute", (req, res) => {
     });
   }
 
+  for (const arg of execution.args) {
+    if (!arg || arg.startsWith("-")) continue;
+    try {
+      resolveWorkspacePathStrict(arg, activeCwd);
+    } catch {
+      console.warn(`[Sandbox] Blocked symlink escape from terminal arg: ${sanitizedCommand}`);
+      return res.status(403).json({
+        stdout: "",
+        stderr: "Command blocked: filesystem access is restricted to the Terminai workspace.",
+        code: 126,
+        newCwd: activeCwd
+      });
+    }
+  }
+
   const child = spawn(execution.command, execution.args, {
     cwd: activeCwd,
     shell: false,
