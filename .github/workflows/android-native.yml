@@ -74,15 +74,15 @@ jobs:
 
       - name: Run unit tests
         working-directory: android
-        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace --no-build-cache
 
       - name: Run Android lint
         working-directory: android
-        run: ./gradlew lintDebug --no-daemon --stacktrace
+        run: ./gradlew lintDebug --no-daemon --stacktrace --no-build-cache
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleDebug --no-daemon --stacktrace --no-build-cache
 
       - name: Run Android APK install smoke test
         shell: bash
@@ -99,7 +99,9 @@ jobs:
 
       - name: Build unsigned release APK
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon --stacktrace
+        env:
+          TERMINAI_API_KEY: test-api-key-for-ci
+        run: ./gradlew assembleRelease --no-daemon --stacktrace --no-build-cache
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
