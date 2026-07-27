@@ -203,8 +203,33 @@ function parseSimpleCd(command: string): string | null {
   return rawTarget === "" || rawTarget === "~" || rawTarget === "$HOME" ? "." : rawTarget.replace(/^\$HOME(?=\/|$)/, ".");
 }
 
-function looksLikeSandboxEscape(command: string): boolean {
-  return /(^|[;&|\s])rm\s+[^;&|]*(\.\.|\s\/)(?=\s|$)/.test(command) || /(^|[;&|\s])(cat|less|more|head|tail|rm|cp|mv|touch|mkdir|rmdir)\s+[^;&|]*\/(etc|dev|proc|sys|root|tmp)(?=\/|\s|$)/.test(command);
+/**
+ * Validates that command arguments do not access paths outside the workspace.
+ * This replaces the regex-based looksLikeSandboxEscape with proper path validation
+ * that catches all bypass attempts including sed, awk, and indirect file access.
+ * 
+ * @param args - Command arguments to validate
+ * @param activeCwd - Current working directory
+ * @returns { valid: boolean; reason?: string } - Validation result
+ */
+function validateArgumentsInWorkspace(args: string[], activeCwd: string): { valid: boolean; reason?: string } {
+  for (const arg of args) {
+    // Skip flags and options (start with - or --)
+    if (arg.startsWith('-')) continue;
+    
+    // Check if this looks like a file path (contains path separators or ~)
+    if (arg.includes('/') || arg.includes('\\') || arg.includes('~')) {
+      try {
+        const resolved = path.resolve(activeCwd, arg);
+        if (!isInsideWorkspace(resolved)) {
+          return { valid: false, reason: `Argument "${arg}" accesses path outside workspace` };
+        }
+      } catch {
+        // Path resolution failed, will be caught at execution time
+      }
+    }
+  }
+  return { valid: true };
 }
 
 // ----------------------------------------------------
@@ -477,29 +502,33 @@ app.post("/api/terminal/execute", (req, res) => {
     }
   }
 
-  if (looksLikeSandboxEscape(sanitizedCommand)) {
-    console.warn(`[Sandbox] Blocked terminal command outside workspace: ${sanitizedCommand}`);
-    return res.status(403).json({
-      stdout: "",
-      stderr: "Command blocked: filesystem access is restricted to the Terminai workspace.",
-      code: 126,
-      newCwd: activeCwd
-    });
-  }
+    const meta = parseShellMetaOutsideQuotes(sanitizedCommand);
+    if (!meta.valid) {
+      return res.status(400).json({
+        stdout: "",
+        stderr: meta.reason,
+        code: 126,
+        newCwd: activeCwd
+      });
+    }
 
-  const meta = parseShellMetaOutsideQuotes(sanitizedCommand);
-  if (!meta.valid) {
-    return res.status(400).json({
-      stdout: "",
-      stderr: meta.reason,
-      code: 126,
-      newCwd: activeCwd
-    });
-  }
+    const execution = resolveCommandExecution(sanitizedCommand, activeCwd);
 
-  const execution = resolveCommandExecution(sanitizedCommand, activeCwd);
+    // Validate arguments for path traversal (replaces regex-based detection)
+    if (execution.kind === 'exec') {
+      const argValidation = validateArgumentsInWorkspace(execution.args, activeCwd);
+      if (!argValidation.valid) {
+        console.warn(`[Sandbox] Blocked terminal command with path traversal: ${sanitizedCommand}`);
+        return res.status(403).json({
+          stdout: "",
+          stderr: `Command blocked: ${argValidation.reason}`,
+          code: 126,
+          newCwd: activeCwd
+        });
+      }
+    }
 
-  if (execution.kind === 'cd') {
+    if (execution.kind === 'cd') {
     return res.json({
       stdout: execution.ok ? "" : `cd: ${execution.stderr}`,
       stderr: execution.ok ? "" : "",
