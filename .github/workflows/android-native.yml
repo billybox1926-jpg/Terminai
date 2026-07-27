@@ -99,6 +99,8 @@ jobs:
 
       - name: Build unsigned release APK
         working-directory: android
+        env:
+          TERMINAI_API_KEY: test-api-key-for-ci
         run: ./gradlew assembleRelease --no-daemon --stacktrace --no-build-cache
 
       - name: Upload debug APK artifact
