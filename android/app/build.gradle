@@ -5,9 +5,7 @@ apply plugin: 'org.jetbrains.kotlin.android'
 def apiKey = project.findProperty("TERMINAI_API_KEY") as String ?: System.getenv("TERMINAI_API_KEY") ?: ""
 
 // Fail fast for release builds if API key is missing
-def isReleaseBuild = gradle.startParameter.taskRequests.any { request ->
-    (request.args ?: []).any { arg -> arg.toString().toLowerCase().contains("release") || arg.toString().toLowerCase().contains("assemble") }
-}
+def isReleaseBuild = gradle.startParameter.taskNames.any { it.toLowerCase().contains("release") }
 if (isReleaseBuild && apiKey.isEmpty()) {
     throw new GradleException("TERMINAI_API_KEY is required for release builds. Set it in gradle.properties or as an environment variable.")
 }
