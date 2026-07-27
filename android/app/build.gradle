@@ -1,7 +1,5 @@
-plugins {
-    id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
-}
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
 
 android {
     namespace 'com.billybox.terminai'
@@ -52,6 +50,7 @@ android {
 
     buildTypes {
         debug {
+            buildConfigField "String", "TERMINAI_API_KEY", "\"$apiKey\""
             // Allow debug builds to work without API key (with warning)
             if (apiKey.isEmpty()) {
                 println "WARNING: TERMINAI_API_KEY is not set. Debug build will run without API key."
