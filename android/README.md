@@ -20,6 +20,22 @@ adb logcat -s Terminai:D
 4. On first launch, follow the on-screen storage/workspace flow.
 5. If you skip workspace selection, you can return to it later from Settings.
 
+## Connecting to the Backend
+
+1. Start the backend from the repo root:
+   ```bash
+   npm run start
+   ```
+2. Find your host machine's LAN IP:
+   - Windows: `ipconfig`
+   - macOS/Linux: `ifconfig` or `ip a`
+3. In the app, open **Server Configuration**:
+   - Host/IP: your PC LAN IP (or `10.0.2.2` for emulator)
+   - Port: `3099` unless changed
+   - API Key: optional unless the backend requires auth
+4. Tap **Test Connection**, then **Save**.
+5. Use the main command input to send runtime commands over HTTP.
+
 ## Troubleshooting
 
 * If the backend is needed, run `npm run dev` from the repo root
