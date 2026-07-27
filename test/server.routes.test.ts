@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 import request from "supertest";
-import app from "../server.ts";
+import { app } from "../server.ts";
 import { TEST_ROOT, disposeTestWorkspace } from "./setup";
 import * as fs from "node:fs";
 import * as path from "node:path";
