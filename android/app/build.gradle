@@ -2,7 +2,7 @@ apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 
 // Build-time safeguard for API key
-def apiKey = project.findProperty("TERMINAI_API_KEY") as String? ?: System.getenv("TERMINAI_API_KEY") ?: ""
+def apiKey = project.findProperty("TERMINAI_API_KEY") as String ?: System.getenv("TERMINAI_API_KEY") ?: ""
 
 // Fail fast for release builds if API key is missing
 def isReleaseBuild = gradle.startParameter.taskRequests.any { request ->
