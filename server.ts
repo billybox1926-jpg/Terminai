@@ -4,7 +4,7 @@ import fs from "fs";
 import os from "os";
 import { exec, execFile, spawn } from "child_process";
 import { fileURLToPath } from "url";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1530,7 +1530,7 @@ async function runStartupCheck(): Promise<RuntimeState> {
       if (!argv || argv.length === 0) {
         console.error("[Runtime] No valid install argv produced.");
       } else {
-        const workDir = path.join(os.tmpdir(), `terminai-install-${crypto.randomUUID()}`);
+        const workDir = path.join(os.tmpdir(), `terminai-install-${randomUUID()}`);
         fs.mkdirSync(workDir, { recursive: true });
         const controller = new AbortController();
         const timeoutMs = getCommandTimeoutMs();
