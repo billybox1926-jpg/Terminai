@@ -78,6 +78,7 @@ class MainActivity : AppCompatActivity() {
         reportText = findViewById(R.id.tv_health_report)
 
         runtimeManager.ensureRuntimeDirectories()
+        runtimeManager.ensureRuntimeExtracted(applicationContext)
         updateStatusDisplay()
 
         if (!runtimeManager.isFirstRunComplete()) {

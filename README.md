@@ -152,6 +152,9 @@ The debug APK will be at `android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ### Sideloading (Android 13/14)
 
+TerminAI bundles the runtime inside the APK and extracts it on first launch.
+No storage permission prompts are required.
+
 Install and launch on a connected device:
 
 ```bash
@@ -165,7 +168,9 @@ adb shell am start -n com.billybox.terminai/.MainActivity
 adb logcat -s TerminaiAPI:D Retrofit:D
 ```
 
-On first run, the app routes through `OnboardingActivity` automatically.
+On first run, the app routes through `OnboardingActivity` automatically and
+extracts `assets/runtime/*` into app-private storage. After that,
+`getRuntimeMode()` should report a bundled runtime mode instead of `placeholder`.
 
 ### API Key Configuration
 

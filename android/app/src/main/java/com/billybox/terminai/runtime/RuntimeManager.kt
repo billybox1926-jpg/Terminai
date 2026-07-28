@@ -32,6 +32,55 @@ class RuntimeManager(private val context: Context) {
     }
 
     /**
+     * Copy bundled runtime assets into app-private filesDir on first launch.
+     *
+     * This extracts `assets/runtime/*` into `filesDir/runtime/` so that the
+     * runtime binaries and manifests are available to the native host without
+     * requesting broad storage permissions.
+     */
+    fun ensureRuntimeExtracted(context: Context) {
+        val extractedMarker = File(stateDir, "runtime_extracted")
+        if (extractedMarker.exists() && runtimeRoot.exists() && runtimeRoot.list()?.isNotEmpty() == true) {
+            return
+        }
+
+        ensureRuntimeDirectories()
+
+        try {
+            context.assets.list("runtime")?.forEach { assetPath ->
+                copyAssetFolder(context, "runtime/$assetPath", File(runtimeRoot, assetPath))
+            }
+            extractedMarker.writeText(System.currentTimeMillis().toString())
+        } catch (e: Exception) {
+            // Extraction is best-effort; the app continues in placeholder mode
+            // if assets cannot be copied for any reason.
+        }
+    }
+
+    private fun copyAssetFolder(context: Context, assetPath: String, targetDir: File) {
+        val children = context.assets.list(assetPath)
+        if (children.isNullOrEmpty()) {
+            copyAssetFile(context, assetPath, targetDir)
+            return
+        }
+
+        if (!targetDir.exists()) targetDir.mkdirs()
+        children.forEach { child ->
+            val childAssetPath = "$assetPath/$child"
+            copyAssetFolder(context, childAssetPath, File(targetDir, child))
+        }
+    }
+
+    private fun copyAssetFile(context: Context, assetPath: String, targetFile: File) {
+        context.assets.open(assetPath).use { input ->
+            targetFile.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        }
+        targetFile.setExecutable(true, false)
+    }
+
+    /**
      * Get the current runtime mode.
      */
     fun getRuntimeMode(): String {
