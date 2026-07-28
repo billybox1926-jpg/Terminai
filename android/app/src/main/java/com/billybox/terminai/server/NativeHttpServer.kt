@@ -118,7 +118,7 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
         return runCommand(runtimeManager, command, args, resolvedCwd)
     }
 
-    private fun runCommand(runtimeManager: RuntimeManager, command: String, args: Array<out String>, cwd: File): Response {
+    private fun runCommand(runtimeManager: com.billybox.terminai.runtime.RuntimeManager, command: String, args: Array<out String>, cwd: File): Response {
         val timeoutMs = 60_000L
         val process = ProcessBuilder(listOf(command) + args)
             .directory(cwd)
