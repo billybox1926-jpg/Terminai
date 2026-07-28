@@ -23,6 +23,7 @@ class DashboardActivity : ComponentActivity() {
             TerminaiTheme {
                 DashboardScreen(
                     uiState = viewModel.uiState,
+                    connectionState = viewModel.connectionState,
                     onRefresh = { viewModel.refresh() },
                     onBack = { finish() }
                 )

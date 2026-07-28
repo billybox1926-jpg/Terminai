@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.billybox.terminai.api.TerminaiApiAudit
 import com.billybox.terminai.api.TerminaiApiBridge
+import com.billybox.terminai.api.apiService
 import com.billybox.terminai.runtime.RuntimeBundleVerifier
 import com.billybox.terminai.runtime.RuntimeManager
 import kotlinx.coroutines.Dispatchers
@@ -19,17 +20,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-/**
- * ViewModel that hoists all dashboard state via [StateFlow].
- *
- * Consumes the existing [RuntimeManager], [RuntimeBundleVerifier],
- * [TerminaiApiBridge], and [TerminaiApiAudit] — no new data sources.
- *
- * Offline-first: loads cached state synchronously on init, then
- * asynchronously refreshes from the live APIs. If the refresh fails
- * (e.g. runtime port unavailable, device offline) the cached state
- * is preserved and [DashboardUiState.Success.isStale] is set to true.
- */
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
 
     private val runtimeManager = RuntimeManager(application)
@@ -37,20 +27,17 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private val apiBridge = TerminaiApiBridge(application)
     private val apiAudit = TerminaiApiAudit(application)
 
+    private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Idle)
+    val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
+
     private val _uiState = MutableStateFlow<DashboardUiState>(DashboardUiState.Loading)
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
 
     init {
-        // Emit cached state immediately (offline-first)
         emitCachedState()
-        // Then refresh from live APIs
         refresh()
     }
 
-    /**
-     * Synchronously emit whatever we can read from disk right now.
-     * This guarantees the UI has content before any async work completes.
-     */
     private fun emitCachedState() {
         try {
             val cached = loadDashboardData()
@@ -73,6 +60,15 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 bridgeSimulated = cached.bridgeSimulated,
                 bridgeUnavailable = cached.bridgeUnavailable,
                 bridgeBlocked = cached.bridgeBlocked,
+                systemPlatform = cached.systemPlatform,
+                systemDevice = cached.systemDevice,
+                systemManufacturer = cached.systemManufacturer,
+                memoryUsage = cached.memoryUsage,
+                uptime = cached.uptime,
+                runtimeReady = cached.runtimeReady,
+                installedCount = cached.installedCount,
+                requiredMissing = cached.requiredMissing,
+                bootstrapMode = cached.bootstrapMode,
                 firstRunComplete = cached.firstRunComplete,
                 auditEventCount = cached.auditEventCount,
                 auditLogSize = cached.auditLogSize,
@@ -82,43 +78,54 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 androidSdk = Build.VERSION.SDK_INT,
                 appVersionName = "${getAppVersionName()} (${getAppVersionCode()})",
                 lastRefreshedAt = nowIsoUtc(),
-                isStale = true // will be cleared on successful refresh
+                isStale = true
             )
         } catch (_: Exception) {
-            // If even cached load fails, stay in Loading
+            // Keep Loading if cache is unavailable
         }
     }
 
-    /**
-     * Refresh all data from the live APIs. Must be called on a background thread.
-     */
     fun refresh() {
         viewModelScope.launch(Dispatchers.IO) {
+            _connectionState.value = ConnectionState.Loading
             try {
-                val data = loadDashboardData()
+                val snapshot = loadDashboardData()
+                val systemStats = apiService().systemStats()
+                val runtimeStatus = apiService().runtimeStatus()
+
+                _connectionState.value = ConnectionState.Connected
                 _uiState.value = DashboardUiState.Success(
-                    workspacePath = data.workspacePath,
-                    runtimeRoot = data.runtimeRoot,
-                    stateDir = data.stateDir,
-                    runtimeMode = data.runtimeMode,
-                    bundleReady = data.bundleReady,
-                    bundleName = data.bundleName,
-                    bundleVersion = data.bundleVersion,
-                    integrityOk = data.integrityOk,
-                    integrityPlaceholder = data.integrityPlaceholder,
-                    integrityNotes = data.integrityNotes,
-                    fileCountActual = data.fileCountActual,
-                    fileCountExpected = data.fileCountExpected,
-                    bridgeAdapter = data.bridgeAdapter,
-                    bridgeTotal = data.bridgeTotal,
-                    bridgeAvailable = data.bridgeAvailable,
-                    bridgeSimulated = data.bridgeSimulated,
-                    bridgeUnavailable = data.bridgeUnavailable,
-                    bridgeBlocked = data.bridgeBlocked,
-                    firstRunComplete = data.firstRunComplete,
-                    auditEventCount = data.auditEventCount,
-                    auditLogSize = data.auditLogSize,
-                    recentAuditEvents = data.recentAuditEvents,
+                    workspacePath = snapshot.workspacePath,
+                    runtimeRoot = snapshot.runtimeRoot,
+                    stateDir = snapshot.stateDir,
+                    runtimeMode = snapshot.runtimeMode,
+                    bundleReady = snapshot.bundleReady,
+                    bundleName = snapshot.bundleName,
+                    bundleVersion = snapshot.bundleVersion,
+                    integrityOk = snapshot.integrityOk,
+                    integrityPlaceholder = snapshot.integrityPlaceholder,
+                    integrityNotes = snapshot.integrityNotes,
+                    fileCountActual = snapshot.fileCountActual,
+                    fileCountExpected = snapshot.fileCountExpected,
+                    bridgeAdapter = snapshot.bridgeAdapter,
+                    bridgeTotal = snapshot.bridgeTotal,
+                    bridgeAvailable = snapshot.bridgeAvailable,
+                    bridgeSimulated = snapshot.bridgeSimulated,
+                    bridgeUnavailable = snapshot.bridgeUnavailable,
+                    bridgeBlocked = snapshot.bridgeBlocked,
+                    systemPlatform = systemStats.platform ?: snapshot.systemPlatform,
+                    systemDevice = systemStats.device ?: snapshot.systemDevice,
+                    systemManufacturer = systemStats.manufacturer ?: snapshot.systemManufacturer,
+                    memoryUsage = systemStats.memoryUsage ?: snapshot.memoryUsage,
+                    uptime = systemStats.uptime ?: snapshot.uptime,
+                    runtimeReady = runtimeStatus.runtimeReady ?: snapshot.runtimeReady,
+                    installedCount = runtimeStatus.installedCount ?: snapshot.installedCount,
+                    requiredMissing = runtimeStatus.requiredMissing ?: snapshot.requiredMissing,
+                    bootstrapMode = runtimeStatus.bootstrapMode ?: snapshot.bootstrapMode,
+                    firstRunComplete = snapshot.firstRunComplete,
+                    auditEventCount = snapshot.auditEventCount,
+                    auditLogSize = snapshot.auditLogSize,
+                    recentAuditEvents = snapshot.recentAuditEvents,
                     deviceManufacturer = Build.MANUFACTURER,
                     deviceModel = Build.MODEL,
                     androidSdk = Build.VERSION.SDK_INT,
@@ -127,7 +134,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                     isStale = false
                 )
             } catch (e: Exception) {
-                // If refresh fails, keep existing cached state but mark stale
+                _connectionState.value = ConnectionState.Error(e.message ?: "Unknown error")
                 val current = _uiState.value
                 if (current is DashboardUiState.Success) {
                     _uiState.value = current.copy(isStale = true)
@@ -140,8 +147,6 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
     }
-
-    // ── Data loading (all synchronous, called on IO dispatcher) ──
 
     private fun loadDashboardData(): DashboardSnapshot {
         val manifest = runtimeManager.readRuntimeBundleManifest()
@@ -169,6 +174,15 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             bridgeSimulated = bridge.simulated,
             bridgeUnavailable = bridge.unavailable,
             bridgeBlocked = bridge.blockedCount,
+            systemPlatform = "unknown",
+            systemDevice = Build.MODEL,
+            systemManufacturer = Build.MANUFACTURER,
+            memoryUsage = null,
+            uptime = null,
+            runtimeReady = null,
+            installedCount = null,
+            requiredMissing = emptyList(),
+            bootstrapMode = null,
             firstRunComplete = runtimeManager.isFirstRunComplete(),
             auditEventCount = auditEvents.size,
             auditLogSize = auditSize,
@@ -198,21 +212,21 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         }.format(Date())
     }
 
-    /**
-     * Try to read the last-cached health report JSON from the state directory.
-     */
     fun getHealthReportFile(): File {
         return File(runtimeManager.stateDir, "terminai-health-report.json")
     }
 }
 
-// ── UI State ──────────────────────────────────────────────────────
+sealed interface ConnectionState {
+    data object Idle : ConnectionState
+    data object Loading : ConnectionState
+    data object Connected : ConnectionState
+    data class Error(val message: String) : ConnectionState
+}
 
 sealed interface DashboardUiState {
-    /** Initial loading — should flash briefly or be skipped if cached state exists. */
-    object Loading : DashboardUiState
+    data object Loading : DashboardUiState
 
-    /** Live or cached dashboard data. */
     data class Success(
         val workspacePath: String,
         val runtimeRoot: String,
@@ -232,6 +246,15 @@ sealed interface DashboardUiState {
         val bridgeSimulated: Int,
         val bridgeUnavailable: Int,
         val bridgeBlocked: Int,
+        val systemPlatform: String,
+        val systemDevice: String,
+        val systemManufacturer: String,
+        val memoryUsage: Double?,
+        val uptime: Double?,
+        val runtimeReady: Boolean?,
+        val installedCount: Int?,
+        val requiredMissing: List<String>?,
+        val bootstrapMode: String?,
         val firstRunComplete: Boolean,
         val auditEventCount: Int,
         val auditLogSize: Long,
@@ -244,14 +267,11 @@ sealed interface DashboardUiState {
         val isStale: Boolean
     ) : DashboardUiState
 
-    /** Refresh failed — show fallback UI. */
     data class Error(
         val throwable: Throwable,
         val isOffline: Boolean
     ) : DashboardUiState
 }
-
-// ── Internal snapshot (not exposed to UI) ─────────────────────────
 
 private data class DashboardSnapshot(
     val workspacePath: String,
@@ -272,6 +292,15 @@ private data class DashboardSnapshot(
     val bridgeSimulated: Int,
     val bridgeUnavailable: Int,
     val bridgeBlocked: Int,
+    val systemPlatform: String,
+    val systemDevice: String,
+    val systemManufacturer: String,
+    val memoryUsage: Double?,
+    val uptime: Double?,
+    val runtimeReady: Boolean?,
+    val installedCount: Int?,
+    val requiredMissing: List<String>?,
+    val bootstrapMode: String?,
     val firstRunComplete: Boolean,
     val auditEventCount: Int,
     val auditLogSize: Long,

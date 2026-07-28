@@ -56,10 +56,12 @@ import kotlinx.coroutines.flow.StateFlow
 @Composable
 fun DashboardScreen(
     uiState: StateFlow<DashboardUiState>,
+    connectionState: StateFlow<ConnectionState>,
     onRefresh: () -> Unit,
     onBack: () -> Unit
 ) {
     val state by uiState.collectAsState()
+    val connection by connectionState.collectAsState()
 
     Scaffold(
         topBar = {
@@ -84,18 +86,76 @@ fun DashboardScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = onRefresh,
-                containerColor = MaterialTheme.colorScheme.primary
-            ) {
-                Icon(
-                    Icons.Default.Refresh,
-                    contentDescription = "Refresh dashboard"
-                )
+            if (connection !is ConnectionState.Loading) {
+                FloatingActionButton(
+                    onClick = onRefresh,
+                    containerColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = "Refresh dashboard"
+                    )
+                }
             }
         },
         containerColor = TerminaiColors.Bg
     ) { innerPadding ->
+        when (val connection = connection) {
+            is ConnectionState.Loading -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(16.dp))
+                    Text("Connecting to backend...", color = MaterialTheme.colorScheme.onSurface)
+                }
+            }
+
+            is ConnectionState.Error -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        Icons.Default.Error,
+                        contentDescription = null,
+                        tint = TerminaiColors.Error,
+                        modifier = Modifier.size(64.dp)
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = "Backend connection failed",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = connection.message,
+                        fontSize = 14.sp,
+                        color = TerminaiColors.TextDim
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    TextButton(onClick = onRefresh) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Retry")
+                    }
+                    TextButton(onClick = onBack) {
+                        Text("Go Back")
+                    }
+                }
+            }
+
+            else -> Unit
+        }
         when (val current = state) {
             is DashboardUiState.Loading -> {
                 Box(

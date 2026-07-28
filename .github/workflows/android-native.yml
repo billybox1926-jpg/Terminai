@@ -76,6 +76,10 @@ jobs:
         working-directory: android
         run: ./gradlew testDebugUnitTest --no-daemon --stacktrace --no-build-cache
 
+      - name: Run Android compile gate
+        working-directory: android
+        run: ./gradlew compileDebugKotlin --no-daemon --stacktrace --no-build-cache
+
       - name: Run Android lint
         working-directory: android
         run: ./gradlew lintDebug --no-daemon --stacktrace --no-build-cache
