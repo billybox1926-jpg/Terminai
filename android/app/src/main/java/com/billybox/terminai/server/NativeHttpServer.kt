@@ -54,6 +54,8 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
             path == "/api/runtime/status" && session.method == Method.GET -> runtimeStatus()
             path == "/api/runtime/bundle/status" && session.method == Method.GET -> runtimeBundleStatus()
             path == "/api/runtime/bundle/integrity" && session.method == Method.GET -> runtimeBundleIntegrity()
+            path == "/api/runtime/api/status" && session.method == Method.GET -> apiStatus()
+            path == "/api/runtime/api/bridge/status" && session.method == Method.GET -> apiBridgeStatus()
             path == "/api/device/build-status" && session.method == Method.GET -> deviceBuildStatusResponse(session)
             path == "/api/device/build-status" && session.method == Method.POST -> deviceBuildStatusResponse(session)
             path == "/api/gemini/optimize-command" && session.method == Method.POST -> optimizeCommandResponse(session)
@@ -392,6 +394,39 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
             put("fileCountExpected", maxOf(fileCountActual, 0))
             put("notes", "Integrity OK: $fileCountActual files in place.")
         }
+    }
+
+    // ── Runtime API metadata Phase 2 ──────────────────────────────────
+
+    private fun apiStatus(): Response {
+        val baselineFile = runtimeManager.readApiBaseline()
+        val body = if (baselineFile != null && baselineFile.exists()) {
+            baselineFile.readText(Charsets.UTF_8)
+        } else {
+            val fallback = JSONObject()
+                .put("schema", "terminai-api-baseline/v1")
+                .put("description", "API capabilities TerminAI exposes as internal modules in one app.")
+                .put("capabilities", JSONArray())
+                .toString()
+            fallback
+        }
+        return newFixedLengthResponse(Response.Status.OK, "application/json", body)
+            .also { Log.i(TAG, "RUNTIME 200 /api/runtime/api/status") }
+    }
+
+    private fun apiBridgeStatus(): Response {
+        val bridge = com.billybox.terminai.api.TerminaiApiBridge(context)
+        val status = bridge.getBridgeStatus()
+        val body = JSONObject()
+            .put("adapter", status.adapter)
+            .put("total", status.total)
+            .put("available", status.available)
+            .put("simulated", status.simulated)
+            .put("unavailable", status.unavailable)
+            .put("blockedCount", status.blockedCount)
+            .toString()
+        return newFixedLengthResponse(Response.Status.OK, "application/json", body)
+            .also { Log.i(TAG, "RUNTIME 200 /api/runtime/api/bridge/status") }
     }
 
     // ── Device build status ──────────────────────────────────────────
