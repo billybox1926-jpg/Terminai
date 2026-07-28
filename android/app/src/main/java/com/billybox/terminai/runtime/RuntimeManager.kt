@@ -127,7 +127,7 @@ class RuntimeManager(private val context: Context) {
     }
 
     private fun extractJsonString(json: String, key: String): String? {
-        val pattern = "\"$key\"\s*:\s*\"([^\"]+)\"".toRegex()
+        val pattern = "\"$key\"\\s*:\\s*\"([^\"]+)\"".toRegex()
         return pattern.find(json)?.groupValues?.get(1)
     }
 }

@@ -1,4 +1,5 @@
 name: TerminAI Android Native
+# trigger-ci: force fresh Android workflow run with current source
 
 on:
   workflow_dispatch:
