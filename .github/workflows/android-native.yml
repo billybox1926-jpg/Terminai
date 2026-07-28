@@ -76,27 +76,6 @@ jobs:
         working-directory: android
         run: ./gradlew testDebugUnitTest --no-daemon --stacktrace --no-build-cache
 
-      - name: Debug Android runtime sources
-        working-directory: android
-        run: |
-          set -euxo pipefail
-          echo "=== git ls-files matches (case-insensitive) ==="
-          git ls-files | grep -i RuntimeManager || true
-          echo "--- count matches ---"
-          COUNT=$(git ls-files | grep -i RuntimeManager | wc -l || true)
-          echo "Matches: $COUNT"
-          if [ "$COUNT" -gt 1 ]; then
-            echo "More than one file matches RuntimeManager — failing fast."
-            git ls-files | grep -i RuntimeManager
-            exit 1
-          fi
-          echo "Single or no match for RuntimeManager."
-          ls -la app/src/main/java/com/billybox/terminai/runtime || true
-          echo "=== source checksum for RuntimeManager.kt ==="
-          git hash-object app/src/main/java/com/billybox/terminai/runtime/RuntimeManager.kt || true
-          echo "=== grep for unresolved call sites in source tree ==="
-          git grep -n "setPersistedWorkspaceUri\|markFirstRunComplete" || true
-
       - name: Run Android compile gate
         working-directory: android
         run: ./gradlew clean compileDebugKotlin --no-daemon --stacktrace --no-build-cache --info
