@@ -151,26 +151,41 @@ cd android
 The debug APK will be at `android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ### Sideloading (Android 13/14)
+### Sideloading (Android 13/14)
 
-TerminAI bundles the runtime inside the APK and extracts it on first launch.
-No storage permission prompts are required.
+`MANAGE_EXTERNAL_STORAGE` is not required. TerminAI bundles the runtime inside the APK and extracts it on first launch.
 
 Install and launch on a connected device:
-
 ```bash
-# Install
-adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+# Verify the device is visible
+adb devices -l
 
-# Launch
-adb shell am start -n com.billybox.terminai/.MainActivity
+# Optional: uninstall an old build to avoid signature mismatch
+adb -s <serial> uninstall com.billybox.terminai
 
-# Check logs
-adb logcat -s TerminaiAPI:D Retrofit:D
+# Install the debug APK
+adb -s <serial> install -r -d android/app/build/outputs/apk/debug/app-debug.apk
+
+# Launch the app
+adb -s <serial> shell am start -n com.billybox.terminai/.MainActivity
+
+# Optional: watch logs for runtime/extraction info
+adb -s <serial> logcat -v time | grep -iE 'terminai|runtime|workspace|uri|permission'
 ```
 
-On first run, the app routes through `OnboardingActivity` automatically and
-extracts `assets/runtime/*` into app-private storage. After that,
-`getRuntimeMode()` should report a bundled runtime mode instead of `placeholder`.
+On first run, the app routes through `OnboardingActivity` automatically:
+- `Get Started` accepts the default private storage path.
+- `Choose workspace` opens a SAF folder picker; this is optional.
+- No storage permission alert is shown unless the user manually targets a needs-all-files provider.
+
+First-run verification:
+```bash
+adb -s <serial> shell dumpsys package com.billybox.terminai | grep -E 'versionName|versionCode'
+adb -s <serial> shell pm list packages | grep terminai
+```
+After onboarding, `getRuntimeMode()` should report a bundled runtime mode instead of `placeholder`.
+
+Without ADB: enable `Install unknown apps` for your file manager, transfer the debug APK to the device, tap it, and open TerminAI from the launcher.
 
 ### API Key Configuration
 
