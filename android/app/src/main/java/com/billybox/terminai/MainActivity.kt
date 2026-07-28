@@ -25,6 +25,7 @@ import com.billybox.terminai.dashboard.DashboardActivity
 import com.billybox.terminai.runtime.RuntimeManager
 import com.billybox.terminai.runtime.RuntimeBundleVerifier
 import com.billybox.terminai.settings.OnboardingActivity
+import com.billybox.terminai.TerminaiApplication
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -79,6 +80,9 @@ class MainActivity : AppCompatActivity() {
 
         runtimeManager.ensureRuntimeDirectories()
         runtimeManager.ensureRuntimeExtracted(applicationContext)
+
+        (application as TerminaiApplication).nativeHttpServer.startIfEnabled()
+
         updateStatusDisplay()
 
         if (!runtimeManager.isFirstRunComplete()) {
@@ -393,5 +397,10 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val HEALTH_REPORT_FILE = "terminai-health-report.json"
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        (application as TerminaiApplication).nativeHttpServer.shutdown()
     }
 }
