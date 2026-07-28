@@ -142,13 +142,30 @@ Requirements:
 * JDK 17
 * Connected Android device or emulator
 
-Build the app:
+Build the debug APK:
 ```bash
 cd android
 ./gradlew assembleDebug
 ```
 
 The debug APK will be at `android/app/build/outputs/apk/debug/app-debug.apk`.
+
+### Sideloading (Android 13/14)
+
+Install and launch on a connected device:
+
+```bash
+# Install
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+
+# Launch
+adb shell am start -n com.billybox.terminai/.MainActivity
+
+# Check logs
+adb logcat -s TerminaiAPI:D Retrofit:D
+```
+
+On first run, the app routes through `OnboardingActivity` automatically.
 
 ### API Key Configuration
 
