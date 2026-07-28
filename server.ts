@@ -2147,7 +2147,7 @@ Active directory or context string: "${currentContext || 'Workspace Root'}"`;
 // ----------------------------------------------------
 
 async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test") {
     // Integrate Vite as a dev middleware
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -2163,14 +2163,16 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, HOST, () => {
-    console.log(`Terminai Graphical Shell Backend actively listening on ${HOST}:${PORT}`);
-  });
+  if (process.env.NODE_ENV !== "test") {
+    app.listen(PORT, HOST, () => {
+      console.log(`Terminai Graphical Shell Backend actively listening on ${HOST}:${PORT}`);
+    });
 
-  // Run startup check after server is listening (non-blocking)
-  runStartupCheck().catch((e: any) => {
-    console.error("[Runtime] Startup check failed:", e);
-  });
+    // Run startup check after server is listening (non-blocking)
+    runStartupCheck().catch((e: any) => {
+      console.error("[Runtime] Startup check failed:", e);
+    });
+  }
 }
 
 startServer();

@@ -24,6 +24,7 @@ import com.billybox.terminai.settings.ServerConfigActivity
 import com.billybox.terminai.dashboard.DashboardActivity
 import com.billybox.terminai.runtime.RuntimeManager
 import com.billybox.terminai.runtime.RuntimeBundleVerifier
+import com.billybox.terminai.settings.OnboardingActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -78,6 +79,12 @@ class MainActivity : AppCompatActivity() {
 
         runtimeManager.ensureRuntimeDirectories()
         updateStatusDisplay()
+
+        if (!runtimeManager.isFirstRunComplete()) {
+            startActivity(Intent(this, OnboardingActivity::class.java))
+            finish()
+            return
+        }
 
         commandInput = findViewById(R.id.et_backend_command)
         backendOutput = findViewById(R.id.tv_backend_output)
