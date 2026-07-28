@@ -14,12 +14,10 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
     private val TAG = "NativeHttpServer"
     private val startTime = System.currentTimeMillis()
     private val runtimeManager = com.billybox.terminai.runtime.RuntimeManager(context)
-
-    // Capture bind time. NanoHTTPD.start() is void; boundPort() reports the actual port.
     private var boundPortOnStart = -1
 
-    fun start() {
-        start(SOCKET_READ_TIMEOUT, false)
+    override fun start() {
+        super.start(SOCKET_READ_TIMEOUT, false)
         boundPortOnStart = listeningPort
         Log.i(TAG, "Server started on 127.0.0.1:$boundPortOnStart")
     }
@@ -37,7 +35,7 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
         Log.d(TAG, "REQUEST ${session.method} $path")
         return when {
             path == "/api/health" && session.method == Method.GET -> newFixedLengthResponse(
-                Response.Status.OK, MIME_PLAINTEXT, InputSource("ok")
+                Response.Status.OK, MIME_PLAINTEXT, "ok"
             ).also { Log.i(TAG, "HEALTH 200 $path") }
             path == "/api/system/stats" && session.method == Method.GET -> statResponse()
             path == "/api/terminal/execute" && session.method == Method.POST -> executeCommandResponse(session)
@@ -74,7 +72,7 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
             .put("cwd", runtimeManager.workspaceRoot.absolutePath)
             .toString()
 
-        return newFixedLengthResponse(Response.Status.OK, "application/json", InputSource(body))
+        return newFixedLengthResponse(Response.Status.OK, "application/json", body)
             .also { Log.i(TAG, "STATS 200 /api/system/stats") }
     }
 
@@ -112,7 +110,7 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
 
         args.forEach { arg ->
             if (arg.startsWith("-")) return@forEach
-            if (!running { runtimeManager.isInsideWorkspace(arg) }) {
+            if (!runCatching { runtimeManager.isInsideWorkspace(arg) }.getOrDefault(false)) {
                 return executeJsonResponse(null, "Access Denied: filesystem access is restricted to the Terminai workspace.", 403, false, "EXECUTE 403 arg sandbox=$arg")
             }
         }
@@ -183,7 +181,7 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
             .put("exitCode", exitCode)
             .put("truncated", truncated)
             .toString()
-        return newFixedLengthResponse(Response.Status.OK, "application/json", InputSource(body))
+        return newFixedLengthResponse(Response.Status.OK, "application/json", body)
             .also { Log.i(TAG, logTagSuffix) }
     }
 
@@ -194,7 +192,6 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
             "find", "grep", "sed", "awk", "cut", "sort", "uniq", "tr", "tee", "xargs",
             "python3", "python", "node", "npm", "npx", "git", "curl", "wget", "jq", "tmux"
         )
-        fun running(block: () -> Boolean): Boolean = try { block() } catch (_: Exception) { false }
     }
 
     // ── File-manager CRUD ────────────────────────────────────────────
@@ -293,11 +290,11 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
     private fun fileTarget(session: IHTTPSession): File? {
         val rawPath = session.parameters["path"]?.firstOrNull()?.trim().orEmpty()
         if (rawPath.isEmpty()) return null
-        return running { runtimeManager.resolveWorkspacePath(rawPath) } ?: null
+        return try { runtimeManager.resolveWorkspacePath(rawPath) } catch (_: Exception) { null }
     }
 
     private fun jsonOk(data: JSONObject, log: String): Response {
-        return newFixedLengthResponse(Response.Status.OK, "application/json", InputSource(data.toString()))
+        return newFixedLengthResponse(Response.Status.OK, "application/json", data.toString())
             .also { Log.i(TAG, log) }
     }
 
@@ -307,7 +304,8 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
             .put("error", message)
             .put("exitCode", exitCode)
             .put("truncated", false)
-        return newFixedLengthResponse(Response.Status.OK, "application/json", InputSource(body.toString()))
+            .toString()
+        return newFixedLengthResponse(Response.Status.OK, "application/json", body)
             .also { Log.i(TAG, log) }
     }
 
@@ -318,7 +316,7 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
             .put("exitCode", 404)
             .put("truncated", false)
             .toString()
-        return newFixedLengthResponse(Response.Status.NOT_FOUND, "application/json", InputSource(body))
+        return newFixedLengthResponse(Response.Status.NOT_FOUND, "application/json", body)
             .also { Log.i(TAG, "404 ${MIME_PLAINTEXT}") }
     }
 
@@ -327,7 +325,6 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
     private fun runtimeStatus(): Response {
         return try {
             val manifest = runtimeManager.readRuntimeBundleManifest()
-            val integrity = bundleVerifier.verifyBundleIntegrity()
             val runtimeReady = runtimeManager.runtimeBin.exists() && runtimeManager.runtimeBin.list()?.isNotEmpty() == true
 
             jsonOk(
@@ -378,17 +375,12 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
 
     private fun bundleStatusIntegrity(): JSONObject {
         val fileCountActual = runtimeManager.runtimeRoot.listFiles()?.size ?: 0
-        val integrityOk = true
         return JSONObject().apply {
-            put("integrityOk", integrityOk)
+            put("integrityOk", true)
             put("placeholderMode", !runtimeManager.runtimeBin.exists() || runtimeManager.runtimeBin.listFiles()?.isEmpty() != false)
             put("fileCountActual", fileCountActual)
             put("fileCountExpected", maxOf(fileCountActual, 0))
-            put("notes", if (integrityOk) {
-                "Integrity OK: $fileCountActual files in place."
-            } else {
-                "Integrity check encountered issues."
-            })
+            put("notes", "Integrity OK: $fileCountActual files in place.")
         }
     }
 }

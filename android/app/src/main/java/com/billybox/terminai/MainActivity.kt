@@ -404,6 +404,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        (application as TerminaiApplication).nativeHttpServer.shutdown()
+        (application as TerminaiApplication).nativeHttpServer.stop()
     }
 }
