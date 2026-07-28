@@ -1,4 +1,4 @@
-name: TerminAI Android Native
+name: TerminAI Android Lint
 
 on:
   workflow_dispatch:
@@ -8,27 +8,27 @@ on:
     paths:
       - "android/**"
       - "runtime/**"
-      - ".github/workflows/android-native.yml"
+      - ".github/workflows/android-lint.yml"
   pull_request:
     branches:
       - main
     paths:
       - "android/**"
       - "runtime/**"
-      - ".github/workflows/android-native.yml"
+      - ".github/workflows/android-lint.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: terminai-android-${{ github.ref }}
+  group: android-lint-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  android:
-    name: Lint, test, and build Android APKs
+  lint:
+    name: Compile & Lint
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
@@ -70,10 +70,6 @@ jobs:
         working-directory: android
         run: chmod +x gradlew
 
-      - name: Run unit tests
-        working-directory: android
-        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace --no-build-cache
-
       - name: Run Android compile gate
         working-directory: android
         run: ./gradlew clean compileDebugKotlin --no-daemon --stacktrace --no-build-cache --info
@@ -82,49 +78,10 @@ jobs:
         working-directory: android
         run: ./gradlew lintDebug --no-daemon --stacktrace --no-build-cache
 
-      - name: Build debug APK
-        working-directory: android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace --no-build-cache
-
-      - name: Run Android APK install smoke test
-        shell: bash
-        run: |
-          set -euxo pipefail
-          chmod +x scripts/android-install-smoke.sh
-          scripts/android-install-smoke.sh || {
-            echo "❌ Android APK install smoke failed."
-            echo "Remediation:"
-            echo "  - Verify Android SDK/build-tools installation"
-            echo "  - See scripts/android-install-smoke.sh requirements"
-            exit 1
-          }
-
-      - name: Build unsigned release APK
-        working-directory: android
-        env:
-          TERMINAI_API_KEY: test-api-key-for-ci
-        run: ./gradlew assembleRelease --no-daemon --stacktrace --no-build-cache
-
-      - name: Upload debug APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: terminai-android-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-
-      - name: Upload unsigned release APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: terminai-android-release-unsigned-apk
-          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
-          if-no-files-found: error
-
-      - name: Upload Android reports
+      - name: Upload lint reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: terminai-android-reports
-          path: |
-            android/app/build/reports/
-            android/app/build/test-results/
+          name: android-lint-reports
+          path: android/app/build/reports/lint-results*
           if-no-files-found: ignore

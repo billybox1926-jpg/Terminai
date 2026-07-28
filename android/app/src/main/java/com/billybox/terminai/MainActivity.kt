@@ -25,6 +25,7 @@ import com.billybox.terminai.dashboard.DashboardActivity
 import com.billybox.terminai.runtime.RuntimeManager
 import com.billybox.terminai.runtime.RuntimeBundleVerifier
 import com.billybox.terminai.settings.OnboardingActivity
+import com.billybox.terminai.TerminaiApplication
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -79,6 +80,8 @@ class MainActivity : AppCompatActivity() {
 
         runtimeManager.ensureRuntimeDirectories()
         runtimeManager.ensureRuntimeExtracted(applicationContext)
+
+
         updateStatusDisplay()
 
         if (!runtimeManager.isFirstRunComplete()) {
@@ -156,6 +159,10 @@ class MainActivity : AppCompatActivity() {
             appendLine("State root: ${runtimeManager.stateDir.absolutePath}")
             if (runtimeManager.hasPersistedWorkspaceUri()) {
                 appendLine("Workspace SAF URI: ${runtimeManager.getPersistedWorkspaceUri()}")
+            }
+            val port = (application as TerminaiApplication).nativeHttpServer.boundPort()
+            if (port > 0) {
+                appendLine("Native server: http://127.0.0.1:$port/")
             }
             append("Timestamp: ${nowIsoUtc()}")
         }
@@ -393,5 +400,10 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val HEALTH_REPORT_FILE = "terminai-health-report.json"
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        (application as TerminaiApplication).nativeHttpServer.stop()
     }
 }
