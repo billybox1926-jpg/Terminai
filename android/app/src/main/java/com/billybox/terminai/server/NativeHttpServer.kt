@@ -41,6 +41,13 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
         val path = session.uri
         Log.d(TAG, "REQUEST ${session.method} $path")
         return when {
+            path.startsWith("/api/") -> apiRoute(session, path)
+            else -> staticFileResponse(path)
+        }
+    }
+
+    private fun apiRoute(session: IHTTPSession, path: String): Response {
+        return when {
             path == "/api/health" && session.method == Method.GET -> newFixedLengthResponse(
                 Response.Status.OK, MIME_PLAINTEXT, "ok"
             ).also { Log.i(TAG, "HEALTH 200 $path") }
@@ -62,6 +69,43 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
             else -> newNotFound()
         }
     }
+
+    // ── Static frontend serving ──────────────────────────────────────
+    private fun staticFileResponse(path: String): Response {
+        val base = runtimeManager.distDir
+        val file = when {
+            path == "/" || path.isEmpty() -> File(base, "index.html")
+            else -> File(base, path.removePrefix("/"))
+        }
+        return try {
+            require(file.exists()) { "missing" }
+            require(file.isFile) { "not_file" }
+            newFixedLengthResponse(Response.Status.OK, mimeOf(file), file.readText(Charsets.UTF_8)).also { Log.i(TAG, "STATIC 200 $path") }
+        } catch (e: Exception) {
+            val fallback = File(base, "index.html")
+            if (fallback.exists()) newFixedLengthResponse(Response.Status.OK, "text/html", fallback.readText(Charsets.UTF_8)).also { Log.i(TAG, "STATIC 200 / via SPA fallback") } else newNotFound()
+        }
+    }
+
+    private fun mimeOf(file: File): String {
+        return when (file.extension.lowercase()) {
+            "html" -> "text/html"
+            "css" -> "text/css"
+            "js" -> "application/javascript"
+            "json" -> "application/json"
+            "svg" -> "image/svg+xml"
+            "png" -> "image/png"
+            "jpg", "jpeg" -> "image/jpeg"
+            "gif" -> "image/gif"
+            "woff" -> "font/woff"
+            "woff2" -> "font/woff2"
+            "ttf" -> "font/ttf"
+            "ico" -> "image/x-icon"
+            else -> MIME_PLAINTEXT
+        }
+    }
+
+    // ── Health / System ──────────────────────────────────────────────
 
     // ── Health / System ──────────────────────────────────────────────
 

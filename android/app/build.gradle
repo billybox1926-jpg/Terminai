@@ -100,12 +100,14 @@ android {
         noCompress ''
     }
 
-    // Copy the runtime bundle into app assets before APK assembly.
-    // This ensures assets/runtime/* is available inside the APK so the
-    // app can extract it on first launch without storage permissions.
+    // Copy the runtime bundle + frontend dist into app assets before APK assembly.
+    // This ensures assets/runtime/* and assets/dist/* are available inside the APK so the
+    // app can extract runtime on first launch and serve static frontend files via NanoHTTPD.
     task prepareRuntimeAssets(type: Copy) {
         from("$rootDir/runtime/assets")
         into("$rootDir/android/app/src/main/assets/runtime")
+        from("$rootDir/dist")
+        into("$rootDir/android/app/src/main/assets/dist")
     }
     tasks.whenTaskAdded { task ->
         if (task.name == 'mergeDebugAssets' || task.name == 'mergeReleaseAssets') {

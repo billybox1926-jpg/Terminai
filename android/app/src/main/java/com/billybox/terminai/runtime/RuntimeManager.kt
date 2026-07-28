@@ -17,6 +17,7 @@ class RuntimeManager(private val context: Context) {
     val runtimeLib: File get() = File(runtimeRoot, "lib")
     val runtimeEtc: File get() = File(runtimeRoot, "etc")
     val runtimeHome: File get() = File(runtimeRoot, "home")
+    val distDir: File get() = File(context.filesDir, "runtime_dist") // extracted APK asset `dist/`
 
     fun ensureRuntimeDirectories() {
         listOf(runtimeRoot, workspaceRoot, stateDir, runtimeBin, runtimeLib, runtimeEtc, runtimeHome).forEach {
@@ -26,7 +27,9 @@ class RuntimeManager(private val context: Context) {
 
     fun ensureRuntimeExtracted(context: Context) {
         val extractedMarker = File(stateDir, "runtime_extracted")
-        if (extractedMarker.exists() && runtimeRoot.exists() && runtimeRoot.list()?.isNotEmpty() == true) {
+        if (extractedMarker.exists() && runtimeRoot.exists() && runtimeRoot.list()?.isNotEmpty() == true
+            && distDir.exists()
+        ) {
             return
         }
 
@@ -36,9 +39,12 @@ class RuntimeManager(private val context: Context) {
             context.assets.list("runtime")?.forEach { assetPath ->
                 copyAssetFolder(context, "runtime/$assetPath", File(runtimeRoot, assetPath))
             }
+            if (context.assets.list("dist")?.isNotEmpty() == true) {
+                copyAssetFolder(context, "dist", distDir)
+            }
             extractedMarker.writeText(System.currentTimeMillis().toString())
         } catch (e: Exception) {
-            // Extraction is best-effort; the app continues in placeholder mode
+            // Extraction is best-effort; the app continues in degraded mode
             // if assets cannot be copied for any reason.
         }
     }
