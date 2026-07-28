@@ -99,6 +99,19 @@ android {
     aaptOptions {
         noCompress ''
     }
+
+    // Copy the runtime bundle into app assets before APK assembly.
+    // This ensures assets/runtime/* is available inside the APK so the
+    // app can extract it on first launch without storage permissions.
+    task prepareRuntimeAssets(type: Copy) {
+        from("$rootDir/runtime/assets")
+        into("$rootDir/android/app/src/main/assets/runtime")
+    }
+    tasks.whenTaskAdded { task ->
+        if (task.name == 'mergeDebugAssets' || task.name == 'mergeReleaseAssets') {
+            task.dependsOn prepareRuntimeAssets
+        }
+    }
 }
 
 dependencies {
