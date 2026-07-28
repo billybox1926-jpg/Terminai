@@ -2,13 +2,9 @@ package com.billybox.terminai.runtime
 
 import android.content.Context
 import java.io.File
+import java.nio.file.Path
+import java.nio.file.Paths
 
-/**
- * TerminAI Runtime Manager — native Android host.
- *
- * Manages runtime root, workspace root, and app-owned directories.
- * One app. One dashboard. One runtime.
- */
 class RuntimeManager(private val context: Context) {
 
     // App-owned directories (no broad storage permissions needed)
@@ -124,6 +120,46 @@ class RuntimeManager(private val context: Context) {
     fun getPersistedWorkspaceUri(): String? {
         val sharedPref = context.getSharedPreferences("terminai_prefs", Context.MODE_PRIVATE)
         return sharedPref.getString("persisted_workspace_uri", null)
+    }
+
+    // --- Workspace sandbox resolution (ported from `src/server/workspacePaths.mjs`) ---
+
+    fun resolveWorkspacePath(inputPath: String = "."): File {
+        val root = workspaceRoot.canonicalFile
+        val candidate = File(root, inputPath).canonicalFile
+        assertInsideWorkspace(candidate, root)
+        return candidate
+    }
+
+    fun isInsideWorkspace(inputPath: String): Boolean {
+        return try {
+            resolveWorkspacePath(inputPath)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun assertInsideWorkspace(target: File, root: File) {
+        // Canonicalize root once; if it doesn't exist yet, fall back to absolute path.
+        val normalizedRoot = runCatching { root.canonicalFile }.getOrElse { root.absoluteFile }
+        val normalizedTarget = runCatching { target.canonicalFile }.getOrElse { target.absoluteFile }
+
+        var current: Path = normalizedTarget.toPath()
+        while (true) {
+            if (current == normalizedRoot.toPath()) {
+                return
+            }
+            if (!current.startsWith(normalizedRoot.toPath())) {
+                throw SecurityException("Access Denied: Sandbox escape prevented.")
+            }
+            current = current.parent ?: break
+        }
+
+        val relative = normalizedRoot.toPath().relativize(normalizedTarget.toPath())
+        if (relative.toString().startsWith("..")) {
+            throw SecurityException("Access Denied: Sandbox escape prevented.")
+        }
     }
 
     private fun extractJsonString(json: String, key: String): String? {
