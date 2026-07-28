@@ -160,6 +160,10 @@ class MainActivity : AppCompatActivity() {
             if (runtimeManager.hasPersistedWorkspaceUri()) {
                 appendLine("Workspace SAF URI: ${runtimeManager.getPersistedWorkspaceUri()}")
             }
+            val port = (application as TerminaiApplication).nativeHttpServer.boundPort()
+            if (port > 0) {
+                appendLine("Native server: http://127.0.0.1:$port/")
+            }
             append("Timestamp: ${nowIsoUtc()}")
         }
 
