@@ -154,6 +154,9 @@ class MainActivity : AppCompatActivity() {
             appendLine("Runtime root: ${runtimeManager.runtimeRoot.absolutePath}")
             appendLine("Workspace root: ${runtimeManager.workspaceRoot.absolutePath}")
             appendLine("State root: ${runtimeManager.stateDir.absolutePath}")
+            if (runtimeManager.hasPersistedWorkspaceUri()) {
+                appendLine("Workspace SAF URI: ${runtimeManager.getPersistedWorkspaceUri()}")
+            }
             append("Timestamp: ${nowIsoUtc()}")
         }
 
