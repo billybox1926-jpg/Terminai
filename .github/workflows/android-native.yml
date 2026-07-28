@@ -79,6 +79,7 @@ jobs:
       - name: Debug Android runtime sources
         working-directory: android
         run: |
+          set -euxo pipefail
           echo "=== git ls-files matches (case-insensitive) ==="
           git ls-files | grep -i RuntimeManager || true
           echo "--- count matches ---"
@@ -91,6 +92,10 @@ jobs:
           fi
           echo "Single or no match for RuntimeManager."
           ls -la app/src/main/java/com/billybox/terminai/runtime || true
+          echo "=== source checksum for RuntimeManager.kt ==="
+          git hash-object app/src/main/java/com/billybox/terminai/runtime/RuntimeManager.kt || true
+          echo "=== grep for unresolved call sites in source tree ==="
+          git grep -n "setPersistedWorkspaceUri\|markFirstRunComplete" || true
 
       - name: Run Android compile gate
         working-directory: android
