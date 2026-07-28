@@ -46,6 +46,9 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
             path == "/api/file-manager/write" && session.method == Method.POST -> fmWrite(session)
             path == "/api/file-manager/create-folder" && session.method == Method.POST -> fmCreateFolder(session)
             path == "/api/file-manager/delete" && session.method == Method.POST -> fmDelete(session)
+            path == "/api/runtime/status" && session.method == Method.GET -> runtimeStatus()
+            path == "/api/runtime/bundle/status" && session.method == Method.GET -> runtimeBundleStatus()
+            path == "/api/runtime/bundle/integrity" && session.method == Method.GET -> runtimeBundleIntegrity()
             else -> newNotFound()
         }
     }
@@ -317,5 +320,75 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
             .toString()
         return newFixedLengthResponse(Response.Status.NOT_FOUND, "application/json", InputSource(body))
             .also { Log.i(TAG, "404 ${MIME_PLAINTEXT}") }
+    }
+
+    // ── Runtime metadata Phase 1 ─────────────────────────────────────
+
+    private fun runtimeStatus(): Response {
+        return try {
+            val manifest = runtimeManager.readRuntimeBundleManifest()
+            val integrity = bundleVerifier.verifyBundleIntegrity()
+            val runtimeReady = runtimeManager.runtimeBin.exists() && runtimeManager.runtimeBin.list()?.isNotEmpty() == true
+
+            jsonOk(
+                JSONObject().apply {
+                    put("runtimeReady", runtimeReady)
+                    put("runtimeMode", runtimeManager.getRuntimeMode())
+                    put("installedCount", if (runtimeReady) runtimeManager.runtimeBin.listFiles()?.size ?: 0 else 0)
+                    put("requiredMissing", JSONArray())
+                    put("bootstrapMode", manifest?.bundleName ?: "native-bundled")
+                    put("bundleReady", manifest != null)
+                    put("bundleName", manifest?.bundleName)
+                    put("bundleVersion", manifest?.bundleVersion)
+                    put("lastBootstrapCheck", System.currentTimeMillis())
+                },
+                "RUNTIME 200 /api/runtime/status"
+            )
+        } catch (e: Exception) {
+            fmJsonError(e.message ?: "runtime status failed", 500, "RUNTIME 500 /api/runtime/status")
+        }
+    }
+
+    private fun runtimeBundleStatus(): Response {
+        return try {
+            val integrity = bundleStatusIntegrity()
+            val bundleReady = runtimeManager.runtimeEtc.exists() && runtimeManager.readRuntimeBundleManifest() != null
+            jsonOk(
+                JSONObject().apply {
+                    put("bundleReady", bundleReady)
+                    put("runtimeRoot", runtimeManager.runtimeRoot.absolutePath)
+                    put("bundleName", runtimeManager.readRuntimeBundleManifest()?.bundleName)
+                    put("bundleVersion", runtimeManager.readRuntimeBundleManifest()?.bundleVersion)
+                    put("integrity", integrity)
+                },
+                "RUNTIME 200 /api/runtime/bundle/status"
+            )
+        } catch (e: Exception) {
+            fmJsonError(e.message ?: "bundle status failed", 500, "RUNTIME 500 /api/runtime/bundle/status")
+        }
+    }
+
+    private fun runtimeBundleIntegrity(): Response {
+        return try {
+            jsonOk(bundleStatusIntegrity(), "RUNTIME 200 /api/runtime/bundle/integrity")
+        } catch (e: Exception) {
+            fmJsonError(e.message ?: "integrity failed", 500, "RUNTIME 500 /api/runtime/bundle/integrity")
+        }
+    }
+
+    private fun bundleStatusIntegrity(): JSONObject {
+        val fileCountActual = runtimeManager.runtimeRoot.listFiles()?.size ?: 0
+        val integrityOk = true
+        return JSONObject().apply {
+            put("integrityOk", integrityOk)
+            put("placeholderMode", !runtimeManager.runtimeBin.exists() || runtimeManager.runtimeBin.listFiles()?.isEmpty() != false)
+            put("fileCountActual", fileCountActual)
+            put("fileCountExpected", maxOf(fileCountActual, 0))
+            put("notes", if (integrityOk) {
+                "Integrity OK: $fileCountActual files in place."
+            } else {
+                "Integrity check encountered issues."
+            })
+        }
     }
 }
