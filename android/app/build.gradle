@@ -94,6 +94,11 @@ android {
             excludes += ['/META-INF/AL2.0', '/META-INF/LGPL2.1']
         }
     }
+
+    // Preserve existing runtime assets without re-compression.
+    aaptOptions {
+        noCompress ''
+    }
 }
 
 dependencies {
