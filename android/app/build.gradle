@@ -137,6 +137,9 @@ dependencies {
     // JSON parsing
     implementation 'com.squareup.moshi:moshi-kotlin:1.15.1'
 
+    // Native HTTP server for bundled backend
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'
+
     // Networking via Retrofit + OkHttp + Coroutines
     implementation 'com.squareup.retrofit2:retrofit:2.9.0'
     implementation 'com.squareup.retrofit2:converter-moshi:2.9.0'

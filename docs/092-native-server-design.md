@@ -25,7 +25,9 @@ Remove the Node.js runtime dependency from the Android app by replacing `server.
 - `GET  /api/runtime/status`
 - `GET  /api/runtime/bundle/status`
 - `GET  /api/runtime/bundle/integrity`
-- `GET  /*` — serve bundled `runtime/assets/dist/index.html` for WebView SPA
+- `GET  /*` — serve bundled web client assets from app-private extracted storage + metadata endpoints
+  - Bundling decision tracked separately: `dist/` is currently git-ignored, so the Phase 1 client asset path needs its own copy/CI mechanism (`assets/runtime/dist`, `prepareRuntimeAssets`, or an additional packaging step)
+  - Server contract: static fallback returns `index.html` for SPA routing; API routes remain `/api/*`
 
 ### Routes deferred
 - `/api/package-manager/*`, `/api/runtime/bootstrap/*` — not actionable on non-root Android
