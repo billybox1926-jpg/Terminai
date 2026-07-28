@@ -188,7 +188,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         return try {
             val pm = getApplication<Application>().packageManager
             val pi = pm.getPackageInfo(getApplication<Application>().packageName, 0)
-            pi.longVersionCode
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) pi.longVersionCode else pi.versionCode.toLong()
         } catch (_: Exception) { -1 }
     }
 
