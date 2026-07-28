@@ -81,7 +81,6 @@ class MainActivity : AppCompatActivity() {
         runtimeManager.ensureRuntimeDirectories()
         runtimeManager.ensureRuntimeExtracted(applicationContext)
 
-        (application as TerminaiApplication).nativeHttpServer.startIfEnabled()
 
         updateStatusDisplay()
 
