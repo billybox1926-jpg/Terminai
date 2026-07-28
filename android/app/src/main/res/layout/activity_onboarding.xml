@@ -27,16 +27,14 @@
         android:gravity="center"
         android:layout_marginBottom="24dp"/>
 
-    <Button
-        android:id="@+id/btn_proceed"
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Get Started"
-        android:backgroundTint="@color/terminai_primary"
-        android:textColor="@color/terminai_bg"
-        android:padding="14dp"
-        android:textSize="16sp"
-        android:layout_marginBottom="16dp"/>
+        android:text="Optional: pick a folder for your workspace. By default, TerminAI uses its own private storage."
+        android:textSize="14sp"
+        android:textColor="@color/terminai_text_dim"
+        android:gravity="center"
+        android:layout_marginBottom="8dp"/>
 
     <Button
         android:id="@+id/btn_pick_workspace"
@@ -45,6 +43,26 @@
         android:text="Choose workspace"
         android:backgroundTint="@color/terminai_surface"
         android:textColor="@color/terminai_text"
+        android:padding="14dp"
+        android:textSize="16sp"
+        android:layout_marginBottom="16dp"/>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="TerminAI may ask to send notifications so it can alert you when long-running commands finish."
+        android:textSize="13sp"
+        android:textColor="@color/terminai_text_dim"
+        android:gravity="center"
+        android:layout_marginBottom="16dp"/>
+
+    <Button
+        android:id="@+id/btn_proceed"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Get Started"
+        android:backgroundTint="@color/terminai_primary"
+        android:textColor="@color/terminai_bg"
         android:padding="14dp"
         android:textSize="16sp"
         android:layout_marginBottom="16dp"/>
