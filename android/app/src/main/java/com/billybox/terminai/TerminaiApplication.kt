@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import com.billybox.terminai.api.ApiClientHolder
 import com.billybox.terminai.settings.SettingsManager
+import com.billybox.terminai.server.ServerController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -12,6 +13,8 @@ import kotlinx.coroutines.launch
 
 class TerminaiApplication : Application() {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    val nativeHttpServer by lazy { ServerController(applicationContext) }
 
     override fun onCreate() {
         super.onCreate()
@@ -30,5 +33,7 @@ class TerminaiApplication : Application() {
                 Log.w("TerminaiApplication", "Settings hydration failed", e)
             }
         }
+
+        nativeHttpServer.startIfEnabled()
     }
 }
