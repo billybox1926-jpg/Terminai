@@ -22,22 +22,12 @@ class RuntimeManager(private val context: Context) {
     val runtimeEtc: File get() = File(runtimeRoot, "etc")
     val runtimeHome: File get() = File(runtimeRoot, "home")
 
-    /**
-     * Ensure all runtime directories exist.
-     */
     fun ensureRuntimeDirectories() {
         listOf(runtimeRoot, workspaceRoot, stateDir, runtimeBin, runtimeLib, runtimeEtc, runtimeHome).forEach {
             if (!it.exists()) it.mkdirs()
         }
     }
 
-    /**
-     * Copy bundled runtime assets into app-private filesDir on first launch.
-     *
-     * This extracts `assets/runtime/*` into `filesDir/runtime/` so that the
-     * runtime binaries and manifests are available to the native host without
-     * requesting broad storage permissions.
-     */
     fun ensureRuntimeExtracted(context: Context) {
         val extractedMarker = File(stateDir, "runtime_extracted")
         if (extractedMarker.exists() && runtimeRoot.exists() && runtimeRoot.list()?.isNotEmpty() == true) {
@@ -80,9 +70,6 @@ class RuntimeManager(private val context: Context) {
         targetFile.setExecutable(true, false)
     }
 
-    /**
-     * Get the current runtime mode.
-     */
     fun getRuntimeMode(): String {
         return if (runtimeBin.exists() && runtimeBin.list()?.isNotEmpty() == true) {
             "native-bundled"
@@ -91,15 +78,11 @@ class RuntimeManager(private val context: Context) {
         }
     }
 
-    /**
-     * Read the runtime bundle manifest if present.
-     */
     fun readRuntimeBundleManifest(): RuntimeBundleManifest? {
         val manifestFile = File(runtimeEtc, "runtime-bundle.json")
         if (!manifestFile.exists()) return null
         return try {
             val json = manifestFile.readText()
-            // Simple parsing — in production use Gson/Moshi
             RuntimeBundleManifest(
                 bundleName = extractJsonString(json, "bundleName") ?: "unknown",
                 bundleVersion = extractJsonString(json, "bundleVersion") ?: "0.0.0",
@@ -110,62 +93,41 @@ class RuntimeManager(private val context: Context) {
         }
     }
 
-    /**
-     * Read the package baseline manifest if present.
-     */
     fun readPackageBaseline(): File? {
         val baseline = File(runtimeEtc, "package-baseline.json")
         return if (baseline.exists()) baseline else null
     }
 
-    /**
-     * Read the API baseline manifest if present.
-     */
     fun readApiBaseline(): File? {
         val baseline = File(runtimeEtc, "api-baseline.json")
         return if (baseline.exists()) baseline else null
     }
 
-    /**
-     * Check if first run has been completed.
-     */
     fun isFirstRunComplete(): Boolean {
         return File(stateDir, "first_run_complete").exists()
     }
 
-    /**
-     * Mark first run as complete.
-     */
     fun markFirstRunComplete() {
         File(stateDir, "first_run_complete").writeText(System.currentTimeMillis().toString())
     }
 
-    /**
-     * Save a workspace URI for persistence across app sessions.
-     */
     fun setPersistedWorkspaceUri(uri: String) {
         val sharedPref = context.getSharedPreferences("terminai_prefs", Context.MODE_PRIVATE)
         sharedPref.edit().putString("persisted_workspace_uri", uri).apply()
     }
 
-    /**
-     * Check if a persisted workspace URI has been saved.
-     */
     fun hasPersistedWorkspaceUri(): Boolean {
         val sharedPref = context.getSharedPreferences("terminai_prefs", Context.MODE_PRIVATE)
         return !sharedPref.getString("persisted_workspace_uri", "").isNullOrEmpty()
     }
 
-    /**
-     * Retrieve the persisted workspace URI.
-     */
     fun getPersistedWorkspaceUri(): String? {
         val sharedPref = context.getSharedPreferences("terminai_prefs", Context.MODE_PRIVATE)
         return sharedPref.getString("persisted_workspace_uri", null)
     }
 
     private fun extractJsonString(json: String, key: String): String? {
-        val pattern = "\"$key\"\\s*:\\s*\"([^\"]+)\"".toRegex()
+        val pattern = "\"$key\"\s*:\s*\"([^\"]+)\"".toRegex()
         return pattern.find(json)?.groupValues?.get(1)
     }
 }
