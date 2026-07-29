@@ -150,6 +150,12 @@ jobs:
         working-directory: android
         run: chmod +x gradlew
 
+      - name: Clear Gradle caches for clean build
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf ~/.gradle/caches/ ~/.gradle/wrapper/
+
       - name: Run Android unit tests
         working-directory: android
         run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
