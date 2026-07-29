@@ -246,7 +246,8 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
             "ls", "ll", "pwd", "cd", "cat", "echo", "mkdir", "touch",
             "date", "whoami", "uname", "ps", "top", "free", "df", "du", "wc", "head", "tail",
             "find", "grep", "sed", "awk", "cut", "sort", "uniq", "tr", "tee", "xargs",
-            "python3", "python", "node", "npm", "npx", "git", "curl", "wget", "jq", "tmux"
+            "python3", "python", "node", "npm", "npx", "git", "curl", "wget", "jq", "tmux",
+            "hermes"
         )
     }
 
