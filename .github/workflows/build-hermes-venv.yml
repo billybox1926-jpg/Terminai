@@ -1,0 +1,130 @@
+name: Build Hermes ARM64 Venv Artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      hermes_path:
+        description: "Path or URL to the Hermes runtime artifacts to package"
+        required: false
+        default: ""
+      include_tests:
+        description: "Include test/dev artifacts for debugging only"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-hermes-venv:
+    name: Build ARM64 Hermes venv
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU/ARM64
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Prepare Hermes artifact input
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p build/hermes-input
+          if [ -n "${{ inputs.hermes_path }}" ]; then
+            if [[ "${{ inputs.hermes_path }}" == http* ]]; then
+              curl -L "${{ inputs.hermes_path }}" -o build/hermes-input/hermes-archive
+              case "${{ inputs.hermes_path }}" in
+                *.zip) unzip -q build/hermes-input/hermes-archive -d build/hermes-input ;;
+                *.tar.gz|*.tgz) tar -xzf build/hermes-input/hermes-archive -C build/hermes-input ;;
+              esac
+            else
+              cp -R "${{ inputs.hermes_path }}"/* build/hermes-input/ || true
+            fi
+          fi
+          ls -la build/hermes-input
+
+      - name: Build ARM64 venv inside container
+        shell: bash
+        env:
+          HERMES_INPUT_DIR: build/hermes-input
+        run: |
+          set -euxo pipefail
+          docker run --rm --platform linux/arm64 \
+            -v "$PWD:/repo" \
+            -w /repo \
+            arm64v8/python:3.11-slim bash -lc '
+              set -euxo pipefail
+              python --version
+              uname -m
+              mkdir -p runtime/assets/bin/hermes-venv
+              python -m venv runtime/assets/bin/hermes-venv
+              source runtime/assets/bin/hermes-venv/bin/activate
+              if [ -n "${HERMES_INPUT_DIR}" ] && [ -d "${HERMES_INPUT_DIR}" ]; then
+                if [ -f "${HERMES_INPUT_DIR}/requirements.txt" ]; then
+                  pip install -r "${HERMES_INPUT_DIR}/requirements.txt"
+                fi
+                if [ -d "${HERMES_INPUT_DIR}/dist" ]; then
+                  pip install "${HERMES_INPUT_DIR}/dist"/*.whl 2>/dev/null || true
+                fi
+                if [ -d "${HERMES_INPUT_DIR}" ]; then
+                  pip install "${HERMES_INPUT_DIR}" || true
+                fi
+              else
+                pip install hermes-agent
+              fi
+              hermes --help >/tmp/hermes-help.txt || true
+              hermes --version >/tmp/hermes-version.txt || true
+              cat /tmp/hermes-help.txt
+              cat /tmp/hermes-version.txt
+              hermes-venv/bin/python -V
+              find runtime/assets/bin/hermes-venv -maxdepth 3 -type f | sort
+            '
+
+      - name: Strip dev/test/cache artifacts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          find runtime/assets/bin/hermes-venv -type d -name "__pycache__" -exec rm -rf {} + || true
+          find runtime/assets/bin/hermes-venv -type f -name "*.pyc" -delete || true
+          find runtime/assets/bin/hermes-venv -type d \( -name "tests" -o -name "test" \) -exec rm -rf {} + || true
+          rm -rf runtime/assets/bin/hermes-venv/share || true
+          rm -rf runtime/assets/bin/hermes-venv/include || true
+          rm -rf runtime/assets/bin/hermes-venv/pip-selfcheck.json || true
+          rm -rf runtime/assets/bin/hermes-venv/pip-log.txt || true
+          rm -rf runtime/assets/bin/hermes-venv/pip *.dist-info/RECORD || true
+          find runtime/assets/bin/hermes-venv -maxdepth 2 -type d -name "pip*" -exec rm -rf {} + || true
+          find runtime/assets/bin/hermes-venv -maxdepth 2 -type d -name "setuptools*" -exec rm -rf {} + || true
+          if [ "${{ inputs.include_tests }}" != "true" ]; then
+            find runtime/assets/bin/hermes-venv -maxdepth 2 -type d -name "tests" -exec rm -rf {} + || true
+            find runtime/assets/bin/hermes-venv -maxdepth 2 -type d -name "test" -exec rm -rf {} + || true
+          fi
+
+      - name: Record venv size in job summary
+        shell: bash
+        run: |
+          set -euxo pipefail
+          du -sh runtime/assets/bin/hermes-venv > venv-size.txt 2>/dev/null || echo "runtime/assets/bin/hermes-venv/" > venv-size.txt
+          echo "hermes-venv-size: $(cat venv-size.txt | awk '"'"'{print $1}'"'"')" >> "$GITHUB_STEP_SUMMARY"
+          echo "Hermes venv size: $(cat venv-size.txt | awk '"'"'{print $1}'"'"')"
+
+      - name: Upload Hermes venv artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-arm64-venv
+          path: runtime/assets/bin/hermes-venv/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload venv size report
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-venv-size-report
+          path: venv-size.txt
+          if-no-files-found: warn
+          retention-days: 14

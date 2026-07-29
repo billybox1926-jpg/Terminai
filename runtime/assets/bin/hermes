@@ -1,0 +1,22 @@
+#!/bin/sh
+# Hermes wrapper for TerminAI runtime.
+# Uses the bundled Python venv first; falls back to device PATH if absent.
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VENV_PYTHON="$SCRIPT_DIR/hermes-venv/bin/python"
+
+if [ -x "$VENV_PYTHON" ]; then
+    exec "$VENV_PYTHON" -m hermes "$@"
+fi
+
+if command -v python3 >/dev/null 2>&1; then
+    exec python3 -m hermes "$@"
+fi
+
+if command -v python >/dev/null 2>&1; then
+    exec python -m hermes "$@"
+fi
+
+echo "hermes wrapper: no Python runtime found" >&2
+exit 127

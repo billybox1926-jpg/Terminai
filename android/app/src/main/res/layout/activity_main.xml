@@ -279,6 +279,21 @@
 
         </LinearLayout>
 
+        <!-- Workspace actions -->
+        <Button
+            android:id="@+id/btn_import_workspace"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Import from Workspace"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btn_export_workspace"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Export to Workspace"
+            android:layout_marginBottom="16dp" />
+
         <!-- Footer -->
         <TextView
             android:layout_width="wrap_content"
