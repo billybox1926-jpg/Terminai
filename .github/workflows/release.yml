@@ -72,12 +72,15 @@ jobs:
           PORT=3099 npm run start > server.log 2>&1 &
           SERVER_PID=$!
           trap 'kill ${SERVER_PID} 2>/dev/null || true' EXIT
-          for attempt in {1..30}; do
-            if curl -fsS "http://127.0.0.1:3099/" >/dev/null; then
-              break
+          sleep 2
+          if ! curl -fsS "http://127.0.0.1:3099/" >/dev/null; then
+            echo "Server did not become reachable after startup."
+            echo "## server.log" >> "${GITHUB_STEP_SUMMARY}"
+            if [ -f server.log ]; then
+              cat server.log >> "${GITHUB_STEP_SUMMARY}"
             fi
-            sleep 1
-          done
+            exit 1
+          fi
           curl -fsS "http://127.0.0.1:3099/" >/dev/null
           curl -fsS "http://127.0.0.1:3099/api/runtime/status" >/dev/null
 
