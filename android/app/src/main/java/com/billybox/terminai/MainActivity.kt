@@ -9,6 +9,7 @@ import android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -26,6 +27,7 @@ import com.billybox.terminai.runtime.RuntimeManager
 import com.billybox.terminai.runtime.RuntimeBundleVerifier
 import com.billybox.terminai.settings.OnboardingActivity
 import com.billybox.terminai.TerminaiApplication
+import com.billybox.terminai.utils.WorkspaceSync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -52,6 +54,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var reportText: TextView
     private lateinit var commandInput: EditText
     private lateinit var backendOutput: TextView
+    private lateinit var btnImportWorkspace: Button
+    private lateinit var btnExportWorkspace: Button
 
     private val pickWorkspace = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         uri?.let {
@@ -92,6 +96,8 @@ class MainActivity : AppCompatActivity() {
 
         commandInput = findViewById(R.id.et_backend_command)
         backendOutput = findViewById(R.id.tv_backend_output)
+        btnImportWorkspace = findViewById(R.id.btn_import_workspace)
+        btnExportWorkspace = findViewById(R.id.btn_export_workspace)
 
         findViewById<Button>(R.id.btn_run_health_check).setOnClickListener {
             runHealthCheck()
@@ -134,6 +140,36 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_run_backend_command).setOnClickListener {
             runBackendCommand()
         }
+
+        btnImportWorkspace.setOnClickListener {
+            val uri = runtimeManager.getPersistedWorkspaceUri()
+            if (uri == null) {
+                Toast.makeText(this, "No workspace folder selected", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            confirmAndRunSync(
+                title = "Import from Workspace",
+                message = "This will overwrite files in the app with the same name from your selected folder. Continue?"
+            ) {
+                runImport(Uri.parse(uri))
+            }
+        }
+
+        btnExportWorkspace.setOnClickListener {
+            val uri = runtimeManager.getPersistedWorkspaceUri()
+            if (uri == null) {
+                Toast.makeText(this, "No workspace folder selected", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            confirmAndRunSync(
+                title = "Export to Workspace",
+                message = "This will overwrite files in your selected folder with the app's current project files. Continue?"
+            ) {
+                runExport(Uri.parse(uri))
+            }
+        }
+
+        updateWorkspaceActionVisibility()
     }
 
     private fun updateStatusDisplay() {
@@ -400,6 +436,94 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val HEALTH_REPORT_FILE = "terminai-health-report.json"
+    }
+
+    private fun updateWorkspaceActionVisibility() {
+        val savedUriString = runtimeManager.getPersistedWorkspaceUri()
+        val savedUri = savedUriString?.let { Uri.parse(it) }
+        val hasValidPermission = savedUri != null && WorkspaceSync.hasActivePersistedPermission(applicationContext, savedUri)
+
+        val shouldBeVisible = hasValidPermission
+        if (btnImportWorkspace.visibility != if (shouldBeVisible) Button.VISIBLE else Button.GONE) {
+            btnImportWorkspace.visibility = if (shouldBeVisible) Button.VISIBLE else Button.GONE
+        }
+        if (btnExportWorkspace.visibility != if (shouldBeVisible) Button.VISIBLE else Button.GONE) {
+            btnExportWorkspace.visibility = if (shouldBeVisible) Button.VISIBLE else Button.GONE
+        }
+    }
+
+    private fun confirmAndRunSync(title: String, message: String, action: () -> Unit) {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton("Continue") { _, _ -> action() }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun runImport(sourceUri: Uri) {
+        val destinationRoot = runtimeManager.workspaceRoot
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val result = WorkspaceSync.importFromSAF(
+                    context = applicationContext,
+                    sourceUri = sourceUri,
+                    destinationRoot = destinationRoot,
+                    onProgress = { count, _ ->
+                        runOnUiThread {
+                            Toast.makeText(this@MainActivity, "Imported $count files...", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+                withContext(Dispatchers.Main) {
+                    showSyncSummary("Import", result)
+                    updateWorkspaceActionVisibility()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun runExport(destinationUri: Uri) {
+        val sourceRoot = runtimeManager.workspaceRoot
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val result = WorkspaceSync.exportToSAF(
+                    context = applicationContext,
+                    sourceRoot = sourceRoot,
+                    destinationUri = destinationUri,
+                    onProgress = { count, _ ->
+                        runOnUiThread {
+                            Toast.makeText(this@MainActivity, "Exported $count files...", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+                withContext(Dispatchers.Main) {
+                    showSyncSummary("Export", result)
+                    updateWorkspaceActionVisibility()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Export failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun showSyncSummary(actionName: String, result: WorkspaceSync.SyncResult) {
+        val message = if (result.errors.isEmpty()) {
+            "$actionName complete: ${result.filesCopied} files copied."
+        } else {
+            "$actionName finished with ${result.errors.size} error(s). ${result.filesCopied} files copied successfully."
+        }
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+
+        if (result.errors.isNotEmpty()) {
+            result.errors.forEach { Log.w("WorkspaceSync", it) }
+        }
     }
 
     override fun onDestroy() {
