@@ -8,12 +8,19 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.nio.charset.Charset
+import kotlinx.coroutines.runBlocking
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import kotlinx.coroutines.flow.firstOrNull
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 
 class NativeHttpServer(private val context: Context, private val port: Int = 0) : NanoHTTPD(port) {
 
     private val TAG = "NativeHttpServer"
     private val startTime = System.currentTimeMillis()
     private val runtimeManager = com.billybox.terminai.runtime.RuntimeManager(context)
+    private val buildStatusManager = com.billybox.terminai.device.BuildStatusManager(context)
     private var boundPortOnStart = -1
 
     override fun start() {
@@ -34,6 +41,13 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
         val path = session.uri
         Log.d(TAG, "REQUEST ${session.method} $path")
         return when {
+            path.startsWith("/api/") -> apiRoute(session, path)
+            else -> staticFileResponse(path)
+        }
+    }
+
+    private fun apiRoute(session: IHTTPSession, path: String): Response {
+        return when {
             path == "/api/health" && session.method == Method.GET -> newFixedLengthResponse(
                 Response.Status.OK, MIME_PLAINTEXT, "ok"
             ).also { Log.i(TAG, "HEALTH 200 $path") }
@@ -47,9 +61,51 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
             path == "/api/runtime/status" && session.method == Method.GET -> runtimeStatus()
             path == "/api/runtime/bundle/status" && session.method == Method.GET -> runtimeBundleStatus()
             path == "/api/runtime/bundle/integrity" && session.method == Method.GET -> runtimeBundleIntegrity()
+            path == "/api/runtime/api/status" && session.method == Method.GET -> apiStatus()
+            path == "/api/runtime/api/bridge/status" && session.method == Method.GET -> apiBridgeStatus()
+            path == "/api/device/build-status" && session.method == Method.GET -> deviceBuildStatusResponse(session)
+            path == "/api/device/build-status" && session.method == Method.POST -> deviceBuildStatusResponse(session)
+            path == "/api/gemini/optimize-command" && session.method == Method.POST -> optimizeCommandResponse(session)
             else -> newNotFound()
         }
     }
+
+    // ── Static frontend serving ──────────────────────────────────────
+    private fun staticFileResponse(path: String): Response {
+        val base = runtimeManager.distDir
+        val file = when {
+            path == "/" || path.isEmpty() -> File(base, "index.html")
+            else -> File(base, path.removePrefix("/"))
+        }
+        return try {
+            require(file.exists()) { "missing" }
+            require(file.isFile) { "not_file" }
+            newFixedLengthResponse(Response.Status.OK, mimeOf(file), file.readText(Charsets.UTF_8)).also { Log.i(TAG, "STATIC 200 $path") }
+        } catch (e: Exception) {
+            val fallback = File(base, "index.html")
+            if (fallback.exists()) newFixedLengthResponse(Response.Status.OK, "text/html", fallback.readText(Charsets.UTF_8)).also { Log.i(TAG, "STATIC 200 / via SPA fallback") } else newNotFound()
+        }
+    }
+
+    private fun mimeOf(file: File): String {
+        return when (file.extension.lowercase()) {
+            "html" -> "text/html"
+            "css" -> "text/css"
+            "js" -> "application/javascript"
+            "json" -> "application/json"
+            "svg" -> "image/svg+xml"
+            "png" -> "image/png"
+            "jpg", "jpeg" -> "image/jpeg"
+            "gif" -> "image/gif"
+            "woff" -> "font/woff"
+            "woff2" -> "font/woff2"
+            "ttf" -> "font/ttf"
+            "ico" -> "image/x-icon"
+            else -> MIME_PLAINTEXT
+        }
+    }
+
+    // ── Health / System ──────────────────────────────────────────────
 
     // ── Health / System ──────────────────────────────────────────────
 
@@ -382,5 +438,152 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
             put("fileCountExpected", maxOf(fileCountActual, 0))
             put("notes", "Integrity OK: $fileCountActual files in place.")
         }
+    }
+
+    // ── Runtime API metadata Phase 2 ──────────────────────────────────
+
+    private fun apiStatus(): Response {
+        val baselineFile = runtimeManager.readApiBaseline()
+        val body = if (baselineFile != null && baselineFile.exists()) {
+            baselineFile.readText(Charsets.UTF_8)
+        } else {
+            val fallback = JSONObject()
+                .put("schema", "terminai-api-baseline/v1")
+                .put("description", "API capabilities TerminAI exposes as internal modules in one app.")
+                .put("capabilities", JSONArray())
+                .toString()
+            fallback
+        }
+        return newFixedLengthResponse(Response.Status.OK, "application/json", body)
+            .also { Log.i(TAG, "RUNTIME 200 /api/runtime/api/status") }
+    }
+
+    private fun apiBridgeStatus(): Response {
+        val bridge = com.billybox.terminai.api.TerminaiApiBridge(context)
+        val status = bridge.getBridgeStatus()
+        val body = JSONObject()
+            .put("adapter", status.adapter)
+            .put("total", status.total)
+            .put("available", status.available)
+            .put("simulated", status.simulated)
+            .put("unavailable", status.unavailable)
+            .put("blockedCount", status.blockedCount)
+            .toString()
+        return newFixedLengthResponse(Response.Status.OK, "application/json", body)
+            .also { Log.i(TAG, "RUNTIME 200 /api/runtime/api/bridge/status") }
+    }
+
+    // ── Device build status ──────────────────────────────────────────
+
+    private fun deviceBuildStatusResponse(session: IHTTPSession): Response {
+        return when (session.method) {
+            Method.GET -> {
+                val saved = runBlocking { buildStatusManager.telemetryJson.firstOrNull() }
+                val telemetry = try { JSONObject(saved.orEmpty()) } catch (_: Exception) { JSONObject() }
+                val device = JSONObject()
+                    .put("manufacturer", Build.MANUFACTURER)
+                    .put("device", Build.MODEL)
+                    .put("systemSdk", Build.VERSION.SDK_INT)
+                    .put("cpuArch", Build.SUPPORTED_ABIS.firstOrNull().orEmpty())
+
+                val body = JSONObject()
+                    .put("telemetry", telemetry)
+                    .put("device", device)
+                    .toString()
+                newFixedLengthResponse(Response.Status.OK, "application/json", body)
+                    .also { Log.i(TAG, "BUILD 200 GET /api/device/build-status") }
+            }
+            Method.POST -> {
+                val bodyText = session.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                val payload = try { JSONObject(bodyText) } catch (_: Exception) { null }
+                val telemetry = payload?.optJSONObject("telemetry")?.toString()
+                if (!telemetry.isNullOrEmpty()) {
+                    runBlocking { buildStatusManager.setTelemetryJson(telemetry) }
+                }
+                val body = JSONObject()
+                    .put("success", true)
+                    .put("message", "Device & Build telemetry updated successfully!")
+                    .toString()
+                newFixedLengthResponse(Response.Status.OK, "application/json", body)
+                    .also { Log.i(TAG, "BUILD 200 POST /api/device/build-status") }
+            }
+            else -> newFixedLengthResponse(Response.Status.METHOD_NOT_ALLOWED, MIME_PLAINTEXT, "Method Not Allowed")
+        }
+    }
+
+    // ── Gemini optimize-command ──────────────────────────────────────
+
+    private fun optimizeCommandResponse(session: IHTTPSession): Response {
+        val bodyText = session.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        val payload = try { JSONObject(bodyText) } catch (_: Exception) { null }
+        val prompt = payload?.optString("prompt")?.trim().orEmpty()
+        val currentContext = payload?.optString("currentContext")?.trim().orEmpty()
+
+        if (prompt.isEmpty()) {
+            return executeJsonResponse(null, "User goal/intent is required.", 400, false, "OPTIMIZE 400 missing prompt")
+        }
+
+        return try {
+            val systemInstruction = "You are Terminai's Intelligent AI Shell Optimizer. Return JSON only with keys: optimizedCommand, explanation, alternative."
+            val userContent = "User request: \"$prompt\". Active directory: \"${currentContext.ifEmpty { "workspace"}}\"."
+
+            val okHttp = OkHttpClient.Builder()
+                .callTimeout(java.time.Duration.ofSeconds(12))
+                .build()
+
+            val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+            val body = JSONObject()
+                .put("model", "google/gemini-2.5-flash")
+                .put(
+                    "messages",
+                    JSONArray()
+                        .put(JSONObject().put("role", "system").put("content", systemInstruction))
+                        .put(JSONObject().put("role", "user").put("content", userContent))
+                )
+                .toString()
+                .toRequestBody(jsonMediaType)
+
+            val request = Request.Builder()
+                .url("https://openrouter.ai/api/v1/chat/completions")
+                .post(body)
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Authorization", "Bearer ${context.getSharedPreferences("terminai_device", Context.MODE_PRIVATE).getString("openrouter_api_key", "").orEmpty()}")
+                .build()
+
+            okHttp.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    return executeJsonResponse(null, "LLM request failed: ${response.code} $responseBody", 502, false, "OPTIMIZE 502 http")
+                }
+
+                val cleaned = cleanResponseJson(responseBody)
+                val parsed = try { JSONObject(cleaned) } catch (_: Exception) { null }
+                val optimized = parsed?.optString("optimizedCommand")
+                val explanation = parsed?.optString("explanation")
+                val alternative = parsed?.optString("alternative")
+
+                if (!optimized.isNullOrEmpty()) {
+                    val out = JSONObject()
+                        .put("optimizedCommand", optimized)
+                        .put("explanation", explanation)
+                        .put("alternative", alternative)
+                    jsonOk(out, "OPTIMIZE 200 /api/gemini/optimize-command")
+                } else {
+                    jsonOk(JSONObject().put("optimizedCommand", cleaned), "OPTIMIZE 200 raw fallback")
+                }
+            }
+        } catch (e: Exception) {
+            executeJsonResponse(null, "Optimization failed: ${e.message}", 500, false, "OPTIMIZE 500 ${e.javaClass.simpleName}")
+        }
+    }
+
+    private fun cleanResponseJson(text: String): String {
+        var cleaned = text.trim()
+        cleaned = cleaned.replace(Regex("(?s)<think>.*?</think>"), "").trim()
+        cleaned = cleaned.replace(Regex("^```(?:json)?"), "").trim()
+        cleaned = cleaned.replace(Regex("```$"), "").trim()
+        val startIdx = cleaned.indexOf("{")
+        val endIdx = cleaned.lastIndexOf("}")
+        return if (startIdx >= 0 && endIdx > startIdx) cleaned.substring(startIdx, endIdx + 1) else cleaned
     }
 }
