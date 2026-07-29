@@ -11,16 +11,22 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.JavascriptInterface
 import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import com.billybox.terminai.TerminaiApplication
 import com.billybox.terminai.R
 
-@SuppressLint("SetJavaScriptEnabled")
+@SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
 class DashboardActivity : AppCompatActivity() {
 
     private var nativeServer: com.billybox.terminai.server.ServerController? = null
     private var webView: WebView? = null
+
+    private inner class PortBridge {
+        @JavascriptInterface
+        fun port(): Int = nativeServer?.boundPort() ?: 0
+    }
 
     @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,6 +75,7 @@ class DashboardActivity : AppCompatActivity() {
             return
         }
 
+        webView?.addJavascriptInterface(PortBridge(), "Terminai")
         webView?.loadUrl(url)
     }
 
