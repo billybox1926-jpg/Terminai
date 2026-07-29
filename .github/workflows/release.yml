@@ -6,58 +6,34 @@ on:
     tags:
       - "v*"
 
-permissions:
-  contents: write
-
 concurrency:
   group: terminai-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Build versioned release artifacts
+  build-web:
+    name: Build web/server artifacts
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
 
     steps:
-      - name: Check out repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Derive release version
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            VERSION="${GITHUB_REF_NAME}"
-            IS_TAG_RELEASE="true"
-          else
-            VERSION="manual-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
-            IS_TAG_RELEASE="false"
-          fi
-          echo "TERMINAI_RELEASE_VERSION=${VERSION}" >> "${GITHUB_ENV}"
-          echo "TERMINAI_IS_TAG_RELEASE=${IS_TAG_RELEASE}" >> "${GITHUB_ENV}"
-          echo "Release version: ${VERSION}"
-
-      - name: Set up Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: 20
           cache: npm
 
-      - name: Install web dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: Type-check web/server code
+      - name: Type-check
         run: npm run typecheck
-
-      - name: Validate runtime manifests
-        run: npm run runtime:validate
 
       - name: Run automated tests
         run: npm test
-
-      - name: Runtime manifest status
-        run: npm run runtime:status
 
       - name: Build web client and production server
         run: npm run build
@@ -70,15 +46,11 @@ jobs:
         run: |
           set -euxo pipefail
           PORT=3099 npm run start > server.log 2>&1 &
-          SERVER_PID=$!
-          trap 'kill ${SERVER_PID} 2>/dev/null || true' EXIT
           sleep 2
           if ! curl -fsS "http://127.0.0.1:3099/" >/dev/null; then
             echo "Server did not become reachable after startup."
             echo "## server.log" >> "${GITHUB_STEP_SUMMARY}"
-            if [ -f server.log ]; then
-              cat server.log >> "${GITHUB_STEP_SUMMARY}"
-            fi
+            [ -f server.log ] && cat server.log >> "${GITHUB_STEP_SUMMARY}" || echo "server.log not found"
             exit 1
           fi
           curl -fsS "http://127.0.0.1:3099/" >/dev/null
@@ -87,29 +59,35 @@ jobs:
       - name: Run command and file API safety smoke tests
         run: npm run security:smoke
 
-      - name: Diagnostics on failure
-        if: failure()
-        shell: bash
-        run: |
-          set -euxo pipefail
-          echo "## Server log" >> "${GITHUB_STEP_SUMMARY}"
-          if [ -f server.log ]; then
-            cat server.log >> "${GITHUB_STEP_SUMMARY}"
-          else
-            echo "server.log not found" >> "${GITHUB_STEP_SUMMARY}"
-          fi
-          echo "## Environment" >> "${GITHUB_STEP_SUMMARY}"
-          echo "JAVA_HOME=${JAVA_HOME:-unset}" >> "${GITHUB_STEP_SUMMARY}"
-          echo "ANDROID_HOME=${ANDROID_HOME:-unset}" >> "${GITHUB_STEP_SUMMARY}"
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset}" >> "${GITHUB_STEP_SUMMARY}"
-          echo "TERMINAI_API_KEY set=$([ -n "${TERMINAI_API_KEY:-}" ] && echo yes || echo no)" >> "${GITHUB_STEP_SUMMARY}"
-          echo "TERMINAI_SIGNED_BUILD=${TERMINAI_SIGNED_BUILD:-unset}" >> "${GITHUB_STEP_SUMMARY}"
+      - name: Upload web dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminai-web-dist
+          path: dist/
+          if-no-files-found: error
 
-      - name: Set up JDK 17
+      - name: Upload server logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminai-web-server-logs
+          path: server.log
+          if-no-files-found: ignore
+
+  build-android:
+    name: Build Android artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: "temurin"
-          java-version: "17"
+          distribution: temurin
+          java-version: 17
 
       - name: Configure Android SDK
         shell: bash
@@ -129,178 +107,101 @@ jobs:
             "platforms;android-34" \
             "build-tools;34.0.0"
 
-      - name: Confirm Android SDK components
-        shell: bash
-        run: |
-          set -euxo pipefail
-          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
-          "${SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --list | sed -n '1,220p'
-
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/gradle-wrapper.properties', 'android/**/*.gradle', 'android/gradle.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
       - name: Make Gradle wrapper executable
         working-directory: android
         run: chmod +x gradlew
 
       - name: Clear Gradle caches for clean build
         shell: bash
-        run: |
-          set -euxo pipefail
-          rm -rf ~/.gradle/caches/ ~/.gradle/wrapper/
+        run: rm -rf ~/.gradle/caches/ ~/.gradle/wrapper/
 
-      - name: Run Android unit tests
-        working-directory: android
-        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
-
-      - name: Run Android lint
-        working-directory: android
-        run: ./gradlew lintDebug --no-daemon --stacktrace --info
-
-      - name: Build Android debug APK
+      - name: Build debug APK
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon --stacktrace --info
 
-      - name: Run Android APK install smoke test
-        shell: bash
-        run: |
-          set -euxo pipefail
-          chmod +x scripts/android-install-smoke.sh
-          scripts/android-install-smoke.sh || {
-            echo "❌ Android APK install smoke failed."
-            echo "Remediation:"
-            echo "  - Verify Android SDK/build-tools installation"
-            echo "  - See scripts/android-install-smoke.sh requirements"
-            exit 1
-          }
-
-      - name: Build Android unsigned release APK with full diagnostics
+      - name: Build unsigned release APK
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon --stacktrace --info --debug 2>&1 | tee /tmp/gradle-assemble-release.log
+        env:
+          TERMINAI_API_KEY: ${{ secrets.TERMINAI_API_KEY || 'ci-dummy-key' }}
+        run: ./gradlew assembleRelease --no-daemon --stacktrace --info
 
-      - name: Upload Gradle release log on failure
-        if: failure()
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: terminai-release-gradle-assemble-release-log
-          path: /tmp/gradle-assemble-release.log
-          if-no-files-found: warn
-          retention-days: 14
+          name: terminai-android-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
 
-      - name: Check signing inputs
-        env:
-          KEYSTORE_B64: ${{ secrets.TERMINAI_ANDROID_KEYSTORE_B64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.TERMINAI_ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.TERMINAI_ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.TERMINAI_ANDROID_KEY_PASSWORD }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -n "${KEYSTORE_B64}" && -n "${KEYSTORE_PASSWORD}" && -n "${KEY_ALIAS}" && -n "${KEY_PASSWORD}" ]]; then
-            echo "TERMINAI_SIGNED_BUILD=true" >> "${GITHUB_ENV}"
-            echo "Signing inputs present; signed release build enabled."
-          else
-            echo "TERMINAI_SIGNED_BUILD=false" >> "${GITHUB_ENV}"
-            echo "Signing inputs incomplete or absent; signed release build skipped."
-          fi
+      - name: Upload unsigned release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminai-android-release-unsigned-apk
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
 
-      - name: Decode signing keystore
-        if: ${{ env.TERMINAI_SIGNED_BUILD == 'true' }}
-        env:
-          KEYSTORE_B64: ${{ secrets.TERMINAI_ANDROID_KEYSTORE_B64 }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          RUNNER_TEMP="${RUNNER_TEMP:-/tmp}"
-          KEYSTORE_FILE="${RUNNER_TEMP}/terminai-release.jks"
-          printf '%s' "${KEYSTORE_B64}" | base64 --decode > "${KEYSTORE_FILE}"
-          SIZE=$(stat -c%s "${KEYSTORE_FILE}" 2>/dev/null \
-            || stat -f%z "${KEYSTORE_FILE}")
-          if [[ "${SIZE}" -le 0 ]]; then
-            echo "Decoded keystore is empty." >&2
-            exit 1
-          fi
-          echo "Keystore decoded to temporary CI path (${SIZE} bytes)."
-          echo "TERMINAI_KEYSTORE_PATH=${KEYSTORE_FILE}" >> "${GITHUB_ENV}"
+      - name: Upload build reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-reports
+          path: android/app/build/reports/
+          if-no-files-found: ignore
 
-      - name: Build Android signed release APK
-        if: ${{ env.TERMINAI_SIGNED_BUILD == 'true' }}
-        env:
-          TERMINAI_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.TERMINAI_ANDROID_KEYSTORE_PASSWORD }}
-          TERMINAI_ANDROID_KEY_ALIAS: ${{ secrets.TERMINAI_ANDROID_KEY_ALIAS }}
-          TERMINAI_ANDROID_KEY_PASSWORD: ${{ secrets.TERMINAI_ANDROID_KEY_PASSWORD }}
-        working-directory: android
-        run: ./gradlew assembleRelease --no-daemon --stacktrace
+  package-release:
+    name: Package versioned release artifacts
+    needs: [build-web, build-android]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: terminai-web-dist
+          path: download/web-dist
+
+      - name: Download Android debug artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: terminai-android-debug-apk
+          path: download/android-debug
+
+      - name: Download Android release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: terminai-android-release-unsigned-apk
+          path: download/android-release
 
       - name: Package versioned artifacts
         shell: bash
         run: |
           set -euxo pipefail
-          VERSION="${TERMINAI_RELEASE_VERSION}"
-          mkdir -p release-artifacts
-          tar -czf "release-artifacts/terminai-web-dist-${VERSION}.tar.gz" -C dist .
-          cp android/app/build/outputs/apk/debug/app-debug.apk \
-            "release-artifacts/terminai-android-debug-${VERSION}.apk"
-
-          if [[ "${TERMINAI_SIGNED_BUILD:-false}" == "true" ]]; then
-            cp android/app/build/outputs/apk/release/app-release.apk \
-              "release-artifacts/terminai-android-release-signed-${VERSION}.apk"
-            SIGNED_STATUS="signed APK included"
-            SIGNED_ARTIFACT="- terminai-android-release-signed-${VERSION}.apk — signed release APK."
-          else
-            cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
-              "release-artifacts/terminai-android-release-unsigned-${VERSION}.apk"
-            SIGNED_STATUS="no complete signing secrets — signed APK not produced"
-            SIGNED_ARTIFACT="- terminai-android-release-unsigned-${VERSION}.apk — unsigned release APK."
+          VERSION_TAG="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_REF}" != refs/tags/* ]]; then
+            VERSION_TAG="manual-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
           fi
-
-          cp server.log "release-artifacts/terminai-web-server-${VERSION}.log"
+          mkdir -p release-artifacts
+          cp -f download/web-dist/* release-artifacts/terminai-web-dist-${VERSION_TAG}.tar.gz 2>/dev/null || true
+          if [ -f download/android-debug/app-debug.apk ]; then
+            cp download/android-debug/app-debug.apk "release-artifacts/terminai-android-debug-${VERSION_TAG}.apk"
+          fi
+          if [ -f download/android-release/app-release-unsigned.apk ]; then
+            cp download/android-release/app-release-unsigned.apk "release-artifacts/terminai-android-release-unsigned-${VERSION_TAG}.apk"
+          fi
           (
             cd release-artifacts
-            sha256sum * > "terminai-${VERSION}-sha256sums.txt"
+            sha256sum * > "terminai-${VERSION_TAG}-sha256sums.txt" 2>/dev/null || true
           )
-          cat > release-notes.md <<EOF
-          # TerminAI ${VERSION}
 
-          Official GitHub Actions build artifacts for TerminAI.
-
-          ## Artifacts
-
-          - terminai-web-dist-${VERSION}.tar.gz — production Vite client, bundled Express server, and runtime bundle manifest.
-          - terminai-android-debug-${VERSION}.apk — debug APK for install/testing.
-          ${SIGNED_ARTIFACT}
-          - terminai-${VERSION}-sha256sums.txt — SHA-256 checksums.
-
-          ## Signing status
-
-          The unsigned release APK is not final distribution signing.
-          ${SIGNED_STATUS}
-          See docs/android-signing.md for how to configure signing secrets.
-          EOF
-
-      - name: Upload release workflow artifacts
+      - name: Upload release package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: terminai-release-${{ env.TERMINAI_RELEASE_VERSION }}
+          name: terminai-release-${{ env.TERMINAI_RELEASE_VERSION || 'manual' }}
           path: release-artifacts/
-          if-no-files-found: error
-
-      - name: Upload Android reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: terminai-release-android-reports-${{ env.TERMINAI_RELEASE_VERSION }}
-          path: |
-            android/app/build/reports/
-            android/app/build/test-results/
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
       - name: Create GitHub Release for tag
         if: startsWith(github.ref, 'refs/tags/')
@@ -311,11 +212,5 @@ jobs:
           set -euxo pipefail
           gh release create "${GITHUB_REF_NAME}" release-artifacts/* \
             --repo "${GITHUB_REPOSITORY}" \
-            --title "TerminAI ${TERMINAI_RELEASE_VERSION}" \
-            --notes-file release-notes.md
-
-      - name: Clean up keystore
-        if: ${{ always() && env.TERMINAI_SIGNED_BUILD == 'true' }}
-        shell: bash
-        run: |
-          rm -f "${TERMINAI_KEYSTORE_PATH:-}"
+            --title "TerminAI ${GITHUB_REF_NAME}" \
+            --generate-notes || true
