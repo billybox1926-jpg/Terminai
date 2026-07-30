@@ -109,8 +109,17 @@ jobs:
               echo "=== PIP LIST ==="
               pip list | sed -n "1,220p"
               echo "=== VENV PYTHON CHECK ==="
-              "${HERMES_VENV_DIR}/bin/python" --version
-              "${HERMES_VENV_DIR}/bin/python" -c "import platform; print(\"MACHINE:\", platform.machine())"
+              if [ -x "${HERMES_VENV_DIR}/bin/python3" ]; then
+                : "${HERMES_VENV_DIR_PY:=${HERMES_VENV_DIR}/bin/python3}"
+              elif [ -x "${HERMES_VENV_DIR}/bin/python" ]; then
+                : "${HERMES_VENV_DIR_PY:=${HERMES_VENV_DIR}/bin/python}"
+              else
+                echo "No usable interpreter found at ${HERMES_VENV_DIR}/bin/python3 or ${HERMES_VENV_DIR}/bin/python" >&2
+                exit 1
+              fi
+              echo "Using interpreter: ${HERMES_VENV_DIR_PY}"
+              "${HERMES_VENV_DIR_PY}" --version
+              "${HERMES_VENV_DIR_PY}" -c "import platform; print(\"MACHINE:\", platform.machine())"
               if [ ! -f "${HERMES_VENV_DIR}/bin/hermes" ]; then
                 echo "Missing Hermes CLI entrypoint: ${HERMES_VENV_DIR}/bin/hermes" >&2
                 exit 1
@@ -153,7 +162,16 @@ jobs:
           set -euxo pipefail
           HERMES_VENV_DIR="runtime/assets/bin/hermes-venv"
           test -d "${HERMES_VENV_DIR}"
-          test -x "${HERMES_VENV_DIR}/bin/python3" || test -x "${HERMES_VENV_DIR}/bin/python"
+          if [ -x "${HERMES_VENV_DIR}/bin/python3" ]; then
+            PYTHON_BIN="${HERMES_VENV_DIR}/bin/python3"
+          elif [ -x "${HERMES_VENV_DIR}/bin/python" ]; then
+            PYTHON_BIN="${HERMES_VENV_DIR}/bin/python"
+          else
+            echo "No usable interpreter found at ${HERMES_VENV_DIR}/bin/python3 or ${HERMES_VENV_DIR}/bin/python" >&2
+            exit 1
+          fi
+          echo "Using interpreter: ${PYTHON_BIN}"
+          "${PYTHON_BIN}" --version
           test -x "${HERMES_VENV_DIR}/bin/hermes"
 
       - name: Record venv size in job summary
