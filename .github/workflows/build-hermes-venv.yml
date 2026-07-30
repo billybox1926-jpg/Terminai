@@ -171,7 +171,7 @@ jobs:
             exit 1
           fi
           echo "Using interpreter: ${PYTHON_BIN}"
-          "${PYTHON_BIN}" --version
+          file "${PYTHON_BIN}"
           test -x "${HERMES_VENV_DIR}/bin/hermes"
 
       - name: Record venv size in job summary
