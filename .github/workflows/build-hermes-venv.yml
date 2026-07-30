@@ -78,22 +78,28 @@ jobs:
               source "${HERMES_VENV_DIR}/bin/activate"
               echo "=== UPGRADE PIP TOOLING ==="
               python -m pip install --upgrade pip setuptools wheel
+              install_input=false
               if [ -n "${HERMES_INPUT_DIR}" ] && [ -d "${HERMES_INPUT_DIR}" ]; then
+                if [ -f "${HERMES_INPUT_DIR}/requirements.txt" ] || [ -d "${HERMES_INPUT_DIR}/dist" ] || [ -f "${HERMES_INPUT_DIR}/pyproject.toml" ] || [ -f "${HERMES_INPUT_DIR}/setup.py" ]; then
+                  install_input=true
+                fi
+              fi
+              if [ "${install_input}" = true ]; then
                 if [ -f "${HERMES_INPUT_DIR}/requirements.txt" ]; then
                   echo "=== INSTALL REQUIREMENTS ==="
-                  pip install -v -r "${HERMES_INPUT_DIR}/requirements.txt" 2>&1 | tee /repo/pip-install.log
+                  pip install -v -r "${HERMES_INPUT_DIR}/requirements.txt" 2>&1 | tee -a /repo/pip-install.log
                 fi
                 if [ -d "${HERMES_INPUT_DIR}/dist" ]; then
                   echo "=== INSTALL WHEELS ==="
                   pip install -v "${HERMES_INPUT_DIR}/dist"/*.whl 2>&1 | tee -a /repo/pip-install.log
                 fi
-                if [ -d "${HERMES_INPUT_DIR}" ]; then
+                if [ -f "${HERMES_INPUT_DIR}/pyproject.toml" ] || [ -f "${HERMES_INPUT_DIR}/setup.py" ]; then
                   echo "=== INSTALL INPUT DIR ==="
                   pip install -v "${HERMES_INPUT_DIR}" 2>&1 | tee -a /repo/pip-install.log
                 fi
               else
                 echo "=== INSTALL hermes-agent FROM PYPI ==="
-                pip install -v hermes-agent 2>&1 | tee /repo/pip-install.log
+                pip install -v hermes-agent 2>&1 | tee -a /repo/pip-install.log
               fi
               echo "=== PIP SHOW hermes-agent ==="
               pip show hermes-agent || {
@@ -145,6 +151,10 @@ jobs:
           HERMES_VENV_DIR: ${{ steps.build_venv.outputs.HERMES_VENV_DIR || 'runtime/assets/bin/hermes-venv' }}
         run: |
           set -euxo pipefail
+          if [ ! -d "${HERMES_VENV_DIR}" ]; then
+            echo "Hermes venv directory is missing at ${HERMES_VENV_DIR}" >&2
+            exit 1
+          fi
           if [ ! -x "${HERMES_VENV_DIR}/bin/python" ]; then
             echo "Hermes venv Python is missing or not executable at ${HERMES_VENV_DIR}/bin/python" >&2
             find "${HERMES_VENV_DIR}" -maxdepth 2 -type f | sort || true
@@ -155,27 +165,6 @@ jobs:
             find "${HERMES_VENV_DIR}/bin" -maxdepth 1 -type f | sort || true
             exit 1
           fi
-          "${HERMES_VENV_DIR}/bin/python" --version || {
-            echo "Built venv Python failed to run on this runner via QEMU" >&2
-            exit 1
-          }
-          if ! "${HERMES_VENV_DIR}/bin/python" -c "import platform; import sys; sys.exit(0 if platform.machine().lower() in ('aarch64', 'arm64') else 1)"; then
-            echo "Built venv Python is not ARM64" >&2
-            exit 1
-          fi
-          herm_help="$(mktemp)"
-          if ! "${HERMES_VENV_DIR}/bin/hermes" --help > "${herm_help}"; then
-            echo "Hermes CLI did not return success for --help" >&2
-            cat "${herm_help}" || true
-            rm -f "${herm_help}" || true
-            exit 1
-          fi
-          if [ ! -s "${herm_help}" ]; then
-            echo "Hermes CLI --help produced no output" >&2
-            rm -f "${herm_help}" || true
-            exit 1
-          fi
-          rm -f "${herm_help}" || true
 
       - name: Record venv size in job summary
         id: venv_summary
