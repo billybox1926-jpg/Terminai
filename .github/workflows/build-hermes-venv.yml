@@ -58,13 +58,15 @@ jobs:
           docker run --rm --platform linux/arm64 \
             -v "$PWD:/repo" \
             -w /repo \
+            -e HERMES_INPUT_DIR="${HERMES_INPUT_DIR:-}" \
             arm64v8/python:3.11-slim bash -lc '
-              set -euxo pipefail
+              set -euo pipefail
               python --version
               uname -m
               mkdir -p runtime/assets/bin/hermes-venv
               python -m venv runtime/assets/bin/hermes-venv
               source runtime/assets/bin/hermes-venv/bin/activate
+              HERMES_INPUT_DIR="${HERMES_INPUT_DIR:-}"
               if [ -n "${HERMES_INPUT_DIR}" ] && [ -d "${HERMES_INPUT_DIR}" ]; then
                 if [ -f "${HERMES_INPUT_DIR}/requirements.txt" ]; then
                   pip install -r "${HERMES_INPUT_DIR}/requirements.txt"
@@ -82,7 +84,7 @@ jobs:
               hermes --version >/tmp/hermes-version.txt || true
               cat /tmp/hermes-help.txt
               cat /tmp/hermes-version.txt
-              hermes-venv/bin/python -V
+              runtime/assets/bin/hermes-venv/bin/python -V
               find runtime/assets/bin/hermes-venv -maxdepth 3 -type f | sort
             '
 
