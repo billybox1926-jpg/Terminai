@@ -69,25 +69,40 @@ jobs:
               HERMES_INPUT_DIR="${HERMES_INPUT_DIR:-}"
               HERMES_VENV_DIR="${HERMES_VENV_DIR:-runtime/assets/bin/hermes-venv}"
               mkdir -p "${HERMES_VENV_DIR}"
-              python --version
+              echo "=== QEMU/ARCH CHECK ==="
               uname -m
+              echo "=== PYTHON VERSION ==="
+              python --version
+              echo "=== CREATE VENV ==="
               python -m venv "${HERMES_VENV_DIR}"
               source "${HERMES_VENV_DIR}/bin/activate"
+              echo "=== UPGRADE PIP TOOLING ==="
+              python -m pip install --upgrade pip setuptools wheel
               if [ -n "${HERMES_INPUT_DIR}" ] && [ -d "${HERMES_INPUT_DIR}" ]; then
                 if [ -f "${HERMES_INPUT_DIR}/requirements.txt" ]; then
-                  pip install -r "${HERMES_INPUT_DIR}/requirements.txt"
+                  echo "=== INSTALL REQUIREMENTS ==="
+                  pip install -v -r "${HERMES_INPUT_DIR}/requirements.txt" 2>&1 | tee /repo/pip-install.log
                 fi
                 if [ -d "${HERMES_INPUT_DIR}/dist" ]; then
-                  pip install "${HERMES_INPUT_DIR}/dist"/*.whl 2>/dev/null || true
+                  echo "=== INSTALL WHEELS ==="
+                  pip install -v "${HERMES_INPUT_DIR}/dist"/*.whl 2>&1 | tee -a /repo/pip-install.log
                 fi
                 if [ -d "${HERMES_INPUT_DIR}" ]; then
-                  pip install "${HERMES_INPUT_DIR}" || true
+                  echo "=== INSTALL INPUT DIR ==="
+                  pip install -v "${HERMES_INPUT_DIR}" 2>&1 | tee -a /repo/pip-install.log
                 fi
               else
-                pip install hermes-agent
+                echo "=== INSTALL hermes-agent FROM PYPI ==="
+                pip install -v hermes-agent 2>&1 | tee /repo/pip-install.log
               fi
-              pip show hermes-agent || true
+              echo "=== PIP SHOW hermes-agent ==="
+              pip show hermes-agent || {
+                echo "hermes-agent is not installed after pip install" >&2
+                exit 1
+              }
+              echo "=== PIP LIST ==="
               pip list | sed -n "1,220p"
+              echo "=== VENV PYTHON CHECK ==="
               "${HERMES_VENV_DIR}/bin/python" --version
               "${HERMES_VENV_DIR}/bin/python" -c "import platform; print('MACHINE:', platform.machine())"
               if [ ! -f "${HERMES_VENV_DIR}/bin/hermes" ]; then
@@ -104,6 +119,7 @@ jobs:
                 exit 1
               fi
               cat /tmp/hermes-help.txt
+              echo "=== VENV FILE TREE ==="
               find "${HERMES_VENV_DIR}" -maxdepth 3 -type f | sort
             '
           venv_files="$(find "${HERMES_VENV_DIR}" -maxdepth 3 -type f | wc -l)"
@@ -113,6 +129,15 @@ jobs:
           fi
           echo "venv_file_count=${venv_files}" >> "$GITHUB_OUTPUT"
           echo "HERMES_VENV_DIR=${HERMES_VENV_DIR}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload pip install log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-pip-install-log
+          path: pip-install.log
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Verify Hermes venv contents
         shell: bash
