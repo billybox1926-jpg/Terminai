@@ -62,6 +62,44 @@ Call `hermes --help` directly from `/api/terminal/execute`. The existing allowli
 - With Hermes artifacts: _
 - Delta: _
 
+## Hermes venv artifact
+
+- Run: `.github/workflows/build-hermes-venv.yml`
+- Artifact: `hermes-arm64-venv`
+- Source of truth: CI artifact from `092-phase-2` build, not local rebuilds
+- Commit SHA: `a949ed3`
+- Verified: `file` reports `ELF ... ARM aarch64`; `pyvenv.cfg` home is under the artifact tree; `python3`/`hermes` are executable git mode
+
+Local verification before commit:
+
+```bash
+file runtime/assets/bin/hermes-venv/bin/python3
+find runtime/assets/bin/hermes-venv/bin -maxdepth 1 -type l -printf '%p -> %l\n' || true
+```
+
+The interpreter is `bin/python3`; `bin/python` is generated for compatibility.
+
+If PATH fallback is invoked, the wrapper falls back to `python3 -m hermes` from device `PATH`; do not treat this as successful offline Hermes smoke.
+
+## Android smoke notes (#99)
+
+- The APK build (with the committed venv) may produce a larger bundle; record actual size delta in this section after each build.
+- Use `adb install -r -d` to handle signature/versionCode upgrades during smoke.
+- On first run, monitor extraction logs with `adb logcat -v time | grep -iE 'terminai|runtime|workspace|hermes'`
+- In-app: call `hermes --help` via `/api/terminal/execute` to confirm bundled runtime mode rather than placeholder.
+- If extraction fails, redeploy using verified commit SHA `a949ed3` as the source artifact.
+
+## .gitignore sanity check
+
+Make sure nothing in the venv is being ignored:
+
+```bash
+git check-ignore -v runtime/assets/bin/hermes-venv/bin/python3
+git check-ignore -v runtime/assets/bin/hermes-venv/bin/hermes
+```
+
+If either returns a rule, fix `.gitignore` before committing.
+
 ## Important note
 
 No `.so`/`.pyd` native extensions are being assumed. If Hermes dependencies

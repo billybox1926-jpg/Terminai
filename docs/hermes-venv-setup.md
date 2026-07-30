@@ -41,27 +41,46 @@ Inside the downloaded tree, the key check is the Python interpreter:
 file .hermes-artifact/hermes-arm64-venv/bin/python3
 ```
 
-Expected: `ELF 64-bit LSB executable, ARM aarch64` (or similar ARM64 wording).
+Expected: `ELF ... ARM aarch64` wording.
 
 If it says `x86-64`, the wrong architecture was built — do not commit it.
 
-## 4. Stage and commit
+Also confirm the venv is self-contained:
 
 ```bash
-# Replace the empty placeholder with the real artifact
+sed -n '1,3p' .hermes-artifact/hermes-arm64-venv/pyvenv.cfg
+```
+
+It should show a home path under the current artifact tree, not `Termux` or `/data/data/...`.
+
+## 4. Stage and commit
+
+Use a single atomic move to avoid Windows extraction inconsistencies:
+
+```bash
 rm -rf runtime/assets/bin/hermes-venv
 mv .hermes-artifact/hermes-arm64-venv runtime/assets/bin/hermes-venv
 rm -rf .hermes-artifact
 
-# Confirm executability
-find runtime/assets/bin/hermes-venv -type f \( -name "python*" -o -name "hermes" \) -exec ls -l {} \;
+# Confirm executability/permissions
+find runtime/assets/bin/hermes-venv -maxdepth 1 -type f \( -name "python*" -o -name "hermes" \) -exec ls -l {} \;
+file runtime/assets/bin/hermes-venv/bin/python3
+find runtime/assets/bin/hermes-venv/bin -maxdepth 1 -type l -printf '%p -> %l\n' || true
 
 git add runtime/assets/bin/hermes-venv
 git diff --cached --stat
-git ls-files -s runtime/assets/bin/hermes-venv/bin/python3 | awk '{print $1}'  # should start with 100755
-git ls-files -s runtime/assets/bin/hermes-venv/bin/hermes  | awk '{print $1}'  # should start with 100755
-git commit -m "chore(runtime): vendor ARM64 hermes-venv artifact for #98"
+git ls-files -s runtime/assets/bin/hermes-venv/bin/python3 | awk '{print $1}'  # must start with 100755
+git ls-files -s runtime/assets/bin/hermes-venv/bin/hermes  | awk '{print $1}'  # must start with 100755
+
+# Fix Windows NTFS executable-bit loss if needed
+git update-index --chmod=+x \
+  runtime/assets/bin/hermes-venv/bin/python3 \
+  runtime/assets/bin/hermes-venv/bin/python \
+  runtime/assets/bin/hermes-venv/bin/python3.11 \
+  runtime/assets/bin/hermes-venv/bin/hermes
 ```
+
+Executable git mode is required for on-device extraction to succeed.
 
 ## 5. Push and next actions
 
