@@ -110,7 +110,7 @@ jobs:
               pip list | sed -n "1,220p"
               echo "=== VENV PYTHON CHECK ==="
               "${HERMES_VENV_DIR}/bin/python" --version
-              "${HERMES_VENV_DIR}/bin/python" -c "import platform; print('MACHINE:', platform.machine())"
+              "${HERMES_VENV_DIR}/bin/python" -c "import platform; print(\"MACHINE:\", platform.machine())"
               if [ ! -f "${HERMES_VENV_DIR}/bin/hermes" ]; then
                 echo "Missing Hermes CLI entrypoint: ${HERMES_VENV_DIR}/bin/hermes" >&2
                 exit 1
