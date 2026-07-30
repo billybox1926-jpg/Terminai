@@ -74,7 +74,7 @@ jobs:
               echo "=== PYTHON VERSION ==="
               python --version
               echo "=== CREATE VENV ==="
-              python -m venv "${HERMES_VENV_DIR}"
+              python -m venv --copies "${HERMES_VENV_DIR}"
               source "${HERMES_VENV_DIR}/bin/activate"
               echo "=== UPGRADE PIP TOOLING ==="
               python -m pip install --upgrade pip setuptools wheel
