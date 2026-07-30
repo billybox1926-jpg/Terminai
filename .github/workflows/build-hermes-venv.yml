@@ -151,20 +151,10 @@ jobs:
           HERMES_VENV_DIR: ${{ steps.build_venv.outputs.HERMES_VENV_DIR || 'runtime/assets/bin/hermes-venv' }}
         run: |
           set -euxo pipefail
-          if [ ! -d "${HERMES_VENV_DIR}" ]; then
-            echo "Hermes venv directory is missing at ${HERMES_VENV_DIR}" >&2
-            exit 1
-          fi
-          if [ ! -x "${HERMES_VENV_DIR}/bin/python3" ] && [ ! -x "${HERMES_VENV_DIR}/bin/python" ]; then
-            echo "Hermes venv Python is missing or not executable at ${HERMES_VENV_DIR}/bin/python and ${HERMES_VENV_DIR}/bin/python3" >&2
-            find "${HERMES_VENV_DIR}" -maxdepth 2 -type f \( -name 'python' -o -name 'python3' \) | sort || true
-            exit 1
-          fi
-          if [ ! -x "${HERMES_VENV_DIR}/bin/hermes" ]; then
-            echo "Hermes CLI entrypoint is missing at ${HERMES_VENV_DIR}/bin/hermes" >&2
-            find "${HERMES_VENV_DIR}/bin" -maxdepth 1 -type f | sort || true
-            exit 1
-          fi
+          HERMES_VENV_DIR="runtime/assets/bin/hermes-venv"
+          test -d "${HERMES_VENV_DIR}"
+          test -x "${HERMES_VENV_DIR}/bin/python3" || test -x "${HERMES_VENV_DIR}/bin/python"
+          test -x "${HERMES_VENV_DIR}/bin/hermes"
 
       - name: Record venv size in job summary
         id: venv_summary
