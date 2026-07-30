@@ -20,7 +20,7 @@ jobs:
   build-hermes-venv:
     name: Build ARM64 Hermes venv
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Check out repository
@@ -50,74 +50,146 @@ jobs:
           ls -la build/hermes-input
 
       - name: Build ARM64 venv inside container
+        id: build_venv
         shell: bash
         env:
+          HERMES_VENV_DIR: runtime/assets/bin/hermes-venv
           HERMES_INPUT_DIR: build/hermes-input
         run: |
           set -euxo pipefail
+          mkdir -p "${HERMES_VENV_DIR}"
           docker run --rm --platform linux/arm64 \
+            -u "$(id -u):$(id -g)" \
             -v "$PWD:/repo" \
             -w /repo \
+            -e HERMES_INPUT_DIR="/repo/${HERMES_INPUT_DIR}" \
+            -e HERMES_VENV_DIR="/repo/${HERMES_VENV_DIR}" \
             arm64v8/python:3.11-slim bash -lc '
-              set -euxo pipefail
-              python --version
+              set -euo pipefail
+              HERMES_INPUT_DIR="${HERMES_INPUT_DIR:-}"
+              HERMES_VENV_DIR="${HERMES_VENV_DIR:-runtime/assets/bin/hermes-venv}"
+              mkdir -p "${HERMES_VENV_DIR}"
+              echo "=== QEMU/ARCH CHECK ==="
               uname -m
-              mkdir -p runtime/assets/bin/hermes-venv
-              python -m venv runtime/assets/bin/hermes-venv
-              source runtime/assets/bin/hermes-venv/bin/activate
+              echo "=== PYTHON VERSION ==="
+              python --version
+              echo "=== CREATE VENV ==="
+              python -m venv --copies "${HERMES_VENV_DIR}"
+              source "${HERMES_VENV_DIR}/bin/activate"
+              echo "=== UPGRADE PIP TOOLING ==="
+              python -m pip install --upgrade pip setuptools wheel
+              install_input=false
               if [ -n "${HERMES_INPUT_DIR}" ] && [ -d "${HERMES_INPUT_DIR}" ]; then
+                if [ -f "${HERMES_INPUT_DIR}/requirements.txt" ] || [ -d "${HERMES_INPUT_DIR}/dist" ] || [ -f "${HERMES_INPUT_DIR}/pyproject.toml" ] || [ -f "${HERMES_INPUT_DIR}/setup.py" ]; then
+                  install_input=true
+                fi
+              fi
+              if [ "${install_input}" = true ]; then
                 if [ -f "${HERMES_INPUT_DIR}/requirements.txt" ]; then
-                  pip install -r "${HERMES_INPUT_DIR}/requirements.txt"
+                  echo "=== INSTALL REQUIREMENTS ==="
+                  pip install -v -r "${HERMES_INPUT_DIR}/requirements.txt" 2>&1 | tee -a /repo/pip-install.log
                 fi
                 if [ -d "${HERMES_INPUT_DIR}/dist" ]; then
-                  pip install "${HERMES_INPUT_DIR}/dist"/*.whl 2>/dev/null || true
+                  echo "=== INSTALL WHEELS ==="
+                  pip install -v "${HERMES_INPUT_DIR}/dist"/*.whl 2>&1 | tee -a /repo/pip-install.log
                 fi
-                if [ -d "${HERMES_INPUT_DIR}" ]; then
-                  pip install "${HERMES_INPUT_DIR}" || true
+                if [ -f "${HERMES_INPUT_DIR}/pyproject.toml" ] || [ -f "${HERMES_INPUT_DIR}/setup.py" ]; then
+                  echo "=== INSTALL INPUT DIR ==="
+                  pip install -v "${HERMES_INPUT_DIR}" 2>&1 | tee -a /repo/pip-install.log
                 fi
               else
-                pip install hermes-agent
+                echo "=== INSTALL hermes-agent FROM PYPI ==="
+                pip install -v hermes-agent 2>&1 | tee -a /repo/pip-install.log
               fi
-              hermes --help >/tmp/hermes-help.txt || true
-              hermes --version >/tmp/hermes-version.txt || true
+              echo "=== PIP SHOW hermes-agent ==="
+              pip show hermes-agent || {
+                echo "hermes-agent is not installed after pip install" >&2
+                exit 1
+              }
+              echo "=== PIP LIST ==="
+              pip list | sed -n "1,220p"
+              echo "=== VENV PYTHON CHECK ==="
+              if [ -x "${HERMES_VENV_DIR}/bin/python3" ]; then
+                : "${HERMES_VENV_DIR_PY:=${HERMES_VENV_DIR}/bin/python3}"
+              elif [ -x "${HERMES_VENV_DIR}/bin/python" ]; then
+                : "${HERMES_VENV_DIR_PY:=${HERMES_VENV_DIR}/bin/python}"
+              else
+                echo "No usable interpreter found at ${HERMES_VENV_DIR}/bin/python3 or ${HERMES_VENV_DIR}/bin/python" >&2
+                exit 1
+              fi
+              echo "Using interpreter: ${HERMES_VENV_DIR_PY}"
+              "${HERMES_VENV_DIR_PY}" --version
+              "${HERMES_VENV_DIR_PY}" -c "import platform; print(\"MACHINE:\", platform.machine())"
+              if [ ! -f "${HERMES_VENV_DIR}/bin/hermes" ]; then
+                echo "Missing Hermes CLI entrypoint: ${HERMES_VENV_DIR}/bin/hermes" >&2
+                exit 1
+              fi
+              if ! "${HERMES_VENV_DIR}/bin/hermes" --help > /tmp/hermes-help.txt; then
+                echo "hermes --help failed in ARM64 venv" >&2
+                cat /tmp/hermes-help.txt || true
+                exit 1
+              fi
+              if [ ! -s /tmp/hermes-help.txt ]; then
+                echo "hermes --help produced no output" >&2
+                exit 1
+              fi
               cat /tmp/hermes-help.txt
-              cat /tmp/hermes-version.txt
-              hermes-venv/bin/python -V
-              find runtime/assets/bin/hermes-venv -maxdepth 3 -type f | sort
+              echo "=== VENV FILE TREE ==="
+              find "${HERMES_VENV_DIR}" -maxdepth 3 -type f | sort
             '
+          venv_files="$(find "${HERMES_VENV_DIR}" -maxdepth 3 -type f | wc -l)"
+          if [ "${venv_files}" -eq 0 ]; then
+            echo "Built Hermes venv contains no files at ${HERMES_VENV_DIR}" >&2
+            exit 1
+          fi
+          echo "venv_file_count=${venv_files}" >> "$GITHUB_OUTPUT"
+          echo "HERMES_VENV_DIR=${HERMES_VENV_DIR}" >> "$GITHUB_OUTPUT"
 
-      - name: Strip dev/test/cache artifacts
+      - name: Upload pip install log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-pip-install-log
+          path: pip-install.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Verify Hermes venv contents
         shell: bash
+        env:
+          HERMES_VENV_DIR: ${{ steps.build_venv.outputs.HERMES_VENV_DIR || 'runtime/assets/bin/hermes-venv' }}
         run: |
           set -euxo pipefail
-          find runtime/assets/bin/hermes-venv -type d -name "__pycache__" -exec rm -rf {} + || true
-          find runtime/assets/bin/hermes-venv -type f -name "*.pyc" -delete || true
-          find runtime/assets/bin/hermes-venv -type d \( -name "tests" -o -name "test" \) -exec rm -rf {} + || true
-          rm -rf runtime/assets/bin/hermes-venv/share || true
-          rm -rf runtime/assets/bin/hermes-venv/include || true
-          rm -rf runtime/assets/bin/hermes-venv/pip-selfcheck.json || true
-          rm -rf runtime/assets/bin/hermes-venv/pip-log.txt || true
-          rm -rf runtime/assets/bin/hermes-venv/pip *.dist-info/RECORD || true
-          find runtime/assets/bin/hermes-venv -maxdepth 2 -type d -name "pip*" -exec rm -rf {} + || true
-          find runtime/assets/bin/hermes-venv -maxdepth 2 -type d -name "setuptools*" -exec rm -rf {} + || true
-          if [ "${{ inputs.include_tests }}" != "true" ]; then
-            find runtime/assets/bin/hermes-venv -maxdepth 2 -type d -name "tests" -exec rm -rf {} + || true
-            find runtime/assets/bin/hermes-venv -maxdepth 2 -type d -name "test" -exec rm -rf {} + || true
+          HERMES_VENV_DIR="runtime/assets/bin/hermes-venv"
+          test -d "${HERMES_VENV_DIR}"
+          if [ -x "${HERMES_VENV_DIR}/bin/python3" ]; then
+            PYTHON_BIN="${HERMES_VENV_DIR}/bin/python3"
+          elif [ -x "${HERMES_VENV_DIR}/bin/python" ]; then
+            PYTHON_BIN="${HERMES_VENV_DIR}/bin/python"
+          else
+            echo "No usable interpreter found at ${HERMES_VENV_DIR}/bin/python3 or ${HERMES_VENV_DIR}/bin/python" >&2
+            exit 1
           fi
+          echo "Using interpreter: ${PYTHON_BIN}"
+          file "${PYTHON_BIN}"
+          test -x "${HERMES_VENV_DIR}/bin/hermes"
 
       - name: Record venv size in job summary
+        id: venv_summary
         shell: bash
+        env:
+          HERMES_VENV_DIR: ${{ steps.build_venv.outputs.HERMES_VENV_DIR || 'runtime/assets/bin/hermes-venv' }}
         run: |
           set -euxo pipefail
-          du -sh runtime/assets/bin/hermes-venv > venv-size.txt 2>/dev/null || echo "runtime/assets/bin/hermes-venv/" > venv-size.txt
-          echo "hermes-venv-size: $(cat venv-size.txt | awk '"'"'{print $1}'"'"')" >> "$GITHUB_STEP_SUMMARY"
-          echo "Hermes venv size: $(cat venv-size.txt | awk '"'"'{print $1}'"'"')"
+          size="$(du -sh "${HERMES_VENV_DIR}" | cut -f1 || echo unknown)"
+          echo "hermes-venv-size: ${size}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Hermes venv size: ${size}"
 
       - name: Upload Hermes venv artifact
         uses: actions/upload-artifact@v4
         with:
           name: hermes-arm64-venv
-          path: runtime/assets/bin/hermes-venv/
+          path: ${{ steps.build_venv.outputs.HERMES_VENV_DIR || 'runtime/assets/bin/hermes-venv' }}/
           if-no-files-found: error
           retention-days: 14
 
