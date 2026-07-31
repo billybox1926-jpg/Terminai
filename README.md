@@ -95,7 +95,7 @@ TerminAI has three main surfaces: web frontend, backend server, and native Andro
 |---|---|
 | Web frontend | Terminal UI, dashboard views, quick scripts, package UI |
 | Backend server | Command execution, file manager/runtime APIs, security boundaries |
-| Native Android host | App shell, dashboard/runtime state, API bridge adapter, permissions |
+| Native Android host | App shell, dashboard/runtime state, device API bridge, permissions, Hermes runtime |
 
 In short: the backend is the source of truth for execution and filesystem state. The web UI and native host are two frontends against that same logic; native is still a work-in-progress alongside the web UI.
 
