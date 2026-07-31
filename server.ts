@@ -2010,7 +2010,9 @@ app.post("/api/gemini/optimize-command", async (req, res) => {
   }
 
   const openrouterKey = process.env.OPENROUTER_API_KEY;
-  const systemInstruction = `You are Terminai's Intelligent AI Shell Optimizer. Your task is to translate natural language intentions into highly optimized, safe, modern, and rapid Linux/Bash terminal commands (e.g. suggesting elegant xargs, modern find, sed/awk, custom short loops, or parallel execution hacks).
+  const systemInstruction = `You are Terminai's Intelligent AI Shell Optimizer. Your task is to translate natural language intentions into highly optimized, safe, modern, and rapid Linux/Bash terminal commands.
+
+CRITICAL CONSTRAINT: The terminal executor runs commands without a shell and blocks shell metacharacters and control operators outside quotes. Do NOT suggest commands that use: pipes (|), semicolons (;), ampersands (&), angle brackets (<>), command substitution ($() or backticks), find -exec/xargs style, or redirects. Each suggestion must be a single executable command with arguments, or a simple cd invocation.
 
 You MUST return a structure-validated JSON object satisfying this precise schema:
 {
@@ -2107,8 +2109,9 @@ Active directory or context string: "${currentContext || 'Workspace Root'}"`;
   // 2. Fallback to standard Google GenAI native platform integration
   try {
     const ai = getGeminiClient();
+  const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || "google/gemini-2.5-flash";
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: fallbackModel,
       contents,
       config: {
         systemInstruction,
