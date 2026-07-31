@@ -3,6 +3,8 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 import { exec, execFile, spawn } from "child_process";
+import { defaultRateLimiter, strictRateLimiter, permissiveRateLimiter, systemRateLimiter } from "./src/middleware/rateLimit.ts";
+import { loadAuthMiddleware } from "./src/middleware/auth.ts";
 import { fileURLToPath } from "url";
 import { createHash, randomUUID } from "crypto";
 
@@ -12,12 +14,13 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 
+const explicitPort = process.env.PORT;
 dotenv.config({ path: ".env" });
 dotenv.config({ path: ".env.local", override: true });
 
 // Initialize express app
 export const app = express();
-const PORT = Number.parseInt(process.env.PORT ?? "3000", 10);
+const PORT = Number.parseInt(explicitPort ?? process.env.PORT ?? "3000", 10);
 const HOST = process.env.TERMINAI_BIND_ADDRESS ?? "127.0.0.1";
 const COMMAND_TIMEOUT_MS = Number.parseInt(process.env.TERMINAI_COMMAND_TIMEOUT_MS ?? "30000", 10);
 const COMMAND_MAX_BUFFER = Number.parseInt(process.env.TERMINAI_COMMAND_MAX_BUFFER ?? "1048576", 10);
@@ -67,6 +70,21 @@ function applyAuth(method: string, url: string, handler: express.RequestHandler)
   }
   return appAny[method](url, authMiddleware, handler);
 }
+
+function applyRateLimit(method: string, url: string, limiter: express.RequestHandler | undefined, handler: express.RequestHandler) {
+  if (!limiter) {
+    return appAny[method](url, handler);
+  }
+  return appAny[method](url, limiter, handler);
+}
+
+app.use((req, res, next) => {
+  if (req.path === '/api/health' || req.path === '/') {
+    return next();
+  }
+  if (!authMiddleware) return next();
+  return authMiddleware(req, res, next);
+});
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
@@ -209,7 +227,7 @@ app.get("/api/health", (req, res) => {
 });
 
 // Real-time System Statistics (CPU, Memory, Disk, Environment)
-app.get("/api/system/stats", (req, res) => {
+app.get("/api/system/stats", defaultRateLimiter, (req, res) => {
   try {
     const memoryFree = os.freemem();
     const memoryTotal = os.totalmem();
@@ -436,11 +454,33 @@ function resolveCommandExecution(commandRaw: string, activeCwd: string) {
     return { kind: 'error', reason: `Command "${baseName}" is not allowed.` } as const;
   }
 
+  const blockedFlagArgs = tokens.slice(1).find((arg) => {
+    const normalized = (() => {
+      if (!arg.startsWith("-")) return false;
+      const stripped = arg.replace(/^--?/, "");
+      if (/^\d+$/.test(stripped)) return false;
+      return true;
+    })();
+
+    if (!normalized) return false;
+
+    const flat = arg.replace(/^--?/, "").toLowerCase();
+    return flat === "c" || flat === "eval" || flat === "e";
+  });
+
+  if (blockedFlagArgs) {
+    const blockedFlagText = blockedFlagArgs.replace(/^--?/, "").toLowerCase();
+    return {
+      kind: "error",
+      reason: `Command uses blocked interpreter flag: ${blockedFlagText}`,
+    } as const;
+  }
+
   let blocked = true;
 
   return { kind: 'exec', command: commandName, args: tokens.slice(1), blocked } as const;
 }
-app.post("/api/terminal/execute", (req, res) => {
+app.post("/api/terminal/execute", strictRateLimiter, (req, res) => {
   const { command, cwd } = req.body as { command?: string; cwd?: string };
   if (!command || typeof command !== "string") {
     return res.status(400).json({ error: "Command is required" });
@@ -603,7 +643,7 @@ function sanitizeSensitiveCommand(command: string): string {
 }
 
 // Local file browser APIs (File Tree explorer)
-app.post("/api/file-manager/list", (req, res) => {
+app.post("/api/file-manager/list", permissiveRateLimiter, (req, res) => {
   const { dir } = req.body;
   if (typeof dir === "string" && dir.includes("\0")) {
     return res.status(400).json({ error: "Invalid path" });
@@ -655,7 +695,7 @@ app.post("/api/file-manager/list", (req, res) => {
 });
 
 // File reader
-app.post("/api/file-manager/read", (req, res) => {
+app.post("/api/file-manager/read", permissiveRateLimiter, (req, res) => {
   const { filePath } = req.body;
   if (!filePath || typeof filePath !== "string" || filePath.includes("\0")) {
     return res.status(400).json({ error: "File path is required" });
@@ -681,7 +721,7 @@ app.post("/api/file-manager/read", (req, res) => {
 });
 
 // File writer
-app.post("/api/file-manager/write", (req, res) => {
+app.post("/api/file-manager/write", strictRateLimiter, (req, res) => {
   const { filePath, content } = req.body;
   if (!filePath || typeof filePath !== "string" || filePath.includes("\0")) {
     return res.status(400).json({ error: "File path is required" });
@@ -708,7 +748,7 @@ app.post("/api/file-manager/write", (req, res) => {
 });
 
 // File/Folder deleter
-app.post("/api/file-manager/delete", (req, res) => {
+app.post("/api/file-manager/delete", strictRateLimiter, (req, res) => {
   const { targetPath } = req.body;
   if (!targetPath || typeof targetPath !== "string" || targetPath.includes("\0")) {
     return res.status(400).json({ error: "Path is required" });
@@ -741,7 +781,7 @@ app.post("/api/file-manager/delete", (req, res) => {
 });
 
 // Folder creator
-app.post("/api/file-manager/create-folder", (req, res) => {
+app.post("/api/file-manager/create-folder", strictRateLimiter, (req, res) => {
   const { dirPath, name } = req.body;
   if (!name || typeof name !== "string") {
     return res.status(400).json({ error: "Folder name is required" });
@@ -852,7 +892,7 @@ app.get("/api/package-manager/baseline", (_req, res) => {
   }
 });
 
-app.post("/api/package-manager/install", (req, res) => {
+app.post("/api/package-manager/install", defaultRateLimiter, (req, res) => {
   const { packageIds } = req.body as { packageIds?: string[] };
   if (!packageIds || !Array.isArray(packageIds) || packageIds.length === 0) {
     return res.status(400).json({ error: "packageIds array is required." });
@@ -1043,7 +1083,7 @@ app.get("/api/runtime/bootstrap/status", async (_req, res) => {
 });
 
 // POST /api/runtime/bootstrap/install
-app.post("/api/runtime/bootstrap/install", async (req, res) => {
+app.post("/api/runtime/bootstrap/install", defaultRateLimiter, async (req, res) => {
   try {
     const { packageIds } = req.body as { packageIds?: string[] };
     const baselines = readPackageBaseline();
@@ -1078,7 +1118,7 @@ app.post("/api/runtime/bootstrap/install", async (req, res) => {
 });
 
 // POST /api/runtime/bootstrap/repair
-app.post("/api/runtime/bootstrap/repair", async (_req, res) => {
+app.post("/api/runtime/bootstrap/repair", defaultRateLimiter, async (_req, res) => {
   try {
     const baselines = readPackageBaseline();
     const packages = await checkPackageStatus(baselines);
@@ -1384,7 +1424,7 @@ app.get("/api/runtime/api/bridge/status", (_req, res) => {
 });
 
 // POST /api/runtime/api/invoke
-app.post("/api/runtime/api/invoke", (req, res) => {
+app.post("/api/runtime/api/invoke", defaultRateLimiter, (req, res) => {
   try {
     const { capabilityId, action, payload } = req.body as {
       capabilityId?: string;
@@ -1929,7 +1969,7 @@ let deviceSettings = {
   }
 };
 
-app.get("/api/device/build-status", (req, res) => {
+app.get("/api/device/build-status", defaultRateLimiter, (req, res) => {
   const baseDir = getWorkspaceRoot();
   const telemetryPath = path.join(baseDir, "terminai_telemetry.json");
 
@@ -2003,7 +2043,7 @@ app.post("/api/device/build-status", (req, res) => {
 });
 
 // Intelligent Task and Shell Command optimizer using Gemini or OpenRouter
-app.post("/api/gemini/optimize-command", async (req, res) => {
+app.post("/api/gemini/optimize-command", defaultRateLimiter, async (req, res) => {
   const { prompt, currentContext } = req.body;
   if (!prompt) {
     return res.status(400).json({ error: "User goal/intent is required." });

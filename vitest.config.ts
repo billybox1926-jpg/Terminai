@@ -1,8 +1,10 @@
 import { defineConfig } from "vitest/config";
 
+process.env.TERMINAI_API_KEY = process.env.TERMINAI_API_KEY || "test-api-key";
+
 export default defineConfig({
   test: {
-    include: ["test/server.routes.test.ts"],
+    include: ["test/**/*.test.ts"],
     setupFiles: ["./test/setup.ts"],
     testTimeout: 15000,
     coverage: {

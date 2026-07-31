@@ -33,3 +33,4 @@ ensureTestWorkspace();
 process.env.TERMINAI_AUTO_BOOTSTRAP = "false";
 process.env.NODE_ENV = "test";
 process.env.TERMINAI_WORKSPACE_ROOT = TEST_ROOT;
+process.env.TERMINAI_API_KEY = process.env.TERMINAI_API_KEY || "test-api-key";
