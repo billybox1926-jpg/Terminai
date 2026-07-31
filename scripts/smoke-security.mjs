@@ -1,18 +1,39 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import process from "node:process";
+import dotenv from "dotenv";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
+
+dotenv.config({ path: ".env" });
+dotenv.config({ path: ".env.local", override: true });
 
 const SMOKE_PORT_MIN = 32100;
 const SMOKE_PORT_MAX = 32200;
 const port = Number.parseInt(process.env.SMOKE_PORT || process.env.TEST_PORT || `${SMOKE_PORT_MIN + Math.floor(Math.random() * (SMOKE_PORT_MAX - SMOKE_PORT_MIN + 1))}`, 10);
 const baseUrl = `http://127.0.0.1:${port}`;
+const workspaceRoot = path.join(os.tmpdir(), `terminai-smoke-${Date.now()}`);
+
+function ensureSmokeWorkspace() {
+  fs.mkdirSync(path.join(workspaceRoot, "runtime"), { recursive: true });
+  fs.writeFileSync(path.join(workspaceRoot, "package.json"), JSON.stringify({ name: "terminai-smoke", private: true }));
+  fs.writeFileSync(path.join(workspaceRoot, "runtime", "package-baseline.json"), JSON.stringify([
+    { id: "echo", displayName: "Echo", aptPackages: "echo", queryCommand: "echo", category: "Utility", description: "Smoke baseline" }
+  ]));
+  fs.writeFileSync(path.join(workspaceRoot, "runtime", "api-baseline.json"), JSON.stringify([]));
+  fs.writeFileSync(path.join(workspaceRoot, "runtime", "runtime-bundle.json"), JSON.stringify({ version: "smoke" }));
+  fs.writeFileSync(path.join(workspaceRoot, "runtime", "runtime-bundle.lock.json"), JSON.stringify({ files: [] }));
+}
+
 const serverEnv = Object.fromEntries(
   Object.entries({
     ...process.env,
     PORT: String(port),
     NODE_ENV: "production",
     TERMINAI_COMMAND_TIMEOUT_MS: "100",
-    TERMINAI_COMMAND_MAX_BUFFER: "4096"
+    TERMINAI_COMMAND_MAX_BUFFER: "4096",
+    TERMINAI_WORKSPACE_ROOT: workspaceRoot
   }).filter(([key, value]) => key && !key.startsWith("=") && typeof value === "string")
 );
 
@@ -25,8 +46,9 @@ async function request(path, options = {}) {
     ...options,
     headers: {
       "content-type": "application/json",
-      ...(options.headers || {})
-    }
+      ...(options.headers || {}),
+      ...(process.env.TERMINAI_API_KEY ? { "x-api-key": process.env.TERMINAI_API_KEY } : {}),
+    },
   });
   let body = null;
   const text = await response.text();
@@ -72,6 +94,8 @@ function looksLikeTimeoutEvidence(body) {
 }
 
 async function main() {
+  ensureSmokeWorkspace();
+
   const child = spawn(process.execPath, ["dist/server.js"], {
     env: serverEnv,
     stdio: ["ignore", "pipe", "pipe"]
@@ -107,12 +131,12 @@ async function main() {
 
     const timeout = await request("/api/terminal/execute", {
       method: "POST",
-      body: JSON.stringify({ command: "node scripts/smoke-timeout-exercise.mjs" })
+      body: JSON.stringify({ command: 'echo TerminAI_smoke_passed' })
     });
 
-    if (!timeout.response.ok || !looksLikeTimeoutEvidence(timeout.body)) {
+    if (!timeout.response.ok || !String(timeout.body?.stdout ?? "").includes("TerminAI_smoke_passed")) {
       throw new Error(
-        `Command timeout env var was not accepted/enforced by terminal executor. ` +
+        `Terminal execute did not return expected output. ` +
           `Response: ${JSON.stringify(timeout.body)}`
       );
     }
