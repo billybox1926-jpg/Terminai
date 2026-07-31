@@ -40,7 +40,7 @@ async function request(path, options = {}) {
   return { response, body };
 }
 
-async function waitForServer(child) {
+async function waitForServer(child, logs) {
   for (let attempt = 0; attempt < 120; attempt += 1) {
     if (child.exitCode !== null) {
       throw new Error(`Server exited early with code ${child.exitCode}${logs ? `: ${logs.trim().split("\n").slice(-20).join("\n")}` : ""}`);
@@ -82,7 +82,7 @@ async function main() {
   child.stderr.on("data", (chunk) => { logs += chunk.toString(); });
 
   try {
-    await waitForServer(child);
+    await waitForServer(child, logs);
 
     const runtime = await request("/api/runtime/status");
     if (!runtime.response.ok || !runtime.body?.packages || !runtime.body?.api) {

