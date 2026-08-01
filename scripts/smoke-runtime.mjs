@@ -32,10 +32,12 @@ function delay(ms) {
 }
 
 async function request(requestPath, options = {}) {
+  const apiKey = process.env.TERMINAI_API_KEY;
   const response = await fetch(`${baseUrl}${requestPath}`, {
     ...options,
     headers: {
       "content-type": "application/json",
+      ...(apiKey ? { "x-api-key": apiKey } : {}),
       ...(options.headers || {})
     }
   });
@@ -86,9 +88,11 @@ async function assertHealthy() {
 }
 
 async function assertTerminalRoute() {
+  const apiKey = process.env.TERMINAI_API_KEY || "";
   const { response, body } = await request("/api/terminal/execute", {
     method: "POST",
-    body: JSON.stringify({ command: "echo hello", cwd: "." })
+    body: JSON.stringify({ command: "echo hello", cwd: "." }),
+    ...(apiKey ? { headers: { "x-api-key": apiKey } } : {}),
   });
 
   if (!response.ok) {
