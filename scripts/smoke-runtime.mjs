@@ -86,9 +86,11 @@ async function assertHealthy() {
 }
 
 async function assertTerminalRoute() {
+  const apiKey = process.env.TERMINAI_API_KEY || "";
   const { response, body } = await request("/api/terminal/execute", {
     method: "POST",
-    body: JSON.stringify({ command: "echo hello", cwd: "." })
+    body: JSON.stringify({ command: "echo hello", cwd: "." }),
+    ...(apiKey ? { headers: { "x-api-key": apiKey } } : {}),
   });
 
   if (!response.ok) {
