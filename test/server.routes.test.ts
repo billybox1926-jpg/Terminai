@@ -11,8 +11,8 @@ afterAll(() => disposeTestWorkspace());
 
 const request = createRequest(app);
 
-const authed = (opts: { method: string; path: string; body?: any }) =>
-  request({ ...opts, headers: { ...opts.headers, "x-api-key": TEST_API_KEY } });
+const authed = (opts: { method: string; path: string; body?: any; headers?: Record<string, string> }) =>
+  request({ ...opts, headers: { ...(opts.headers || {}), "x-api-key": TEST_API_KEY } });
 
 describe("GET /api/health", () => {
   it("returns ok without auth", async () => {

@@ -4,9 +4,8 @@ import fs from "fs";
 import os from "os";
 import { exec, execFile, spawn } from "child_process";
 import { defaultRateLimiter, strictRateLimiter, permissiveRateLimiter, systemRateLimiter } from "./src/middleware/rateLimit.ts";
-import { loadAuthMiddleware } from "./src/middleware/auth.ts";
-import { fileURLToPath } from "url";
 import { createHash, randomUUID } from "crypto";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
