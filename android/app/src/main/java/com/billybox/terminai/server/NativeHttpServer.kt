@@ -24,7 +24,7 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
     private var boundPortOnStart = -1
 
     override fun start() {
-        super.start(SOCKET_READ_TIMEOUT, false)
+        super.start(60000, false)
         boundPortOnStart = listeningPort
         Log.i(TAG, "Server started on 127.0.0.1:$boundPortOnStart")
     }
@@ -39,10 +39,14 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
 
     override fun serve(session: IHTTPSession): Response {
         val path = session.uri
-        Log.d(TAG, "REQUEST ${session.method} $path")
-        return when {
-            path.startsWith("/api/") -> apiRoute(session, path)
-            else -> staticFileResponse(path)
+        return try {
+            when {
+                path.startsWith("/api/") -> apiRoute(session, path)
+                else -> staticFileResponse(path)
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "serve() failed path=$path", e)
+            newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json", """{"error":"server failed"}""")
         }
     }
 
@@ -135,51 +139,80 @@ class NativeHttpServer(private val context: Context, private val port: Int = 0) 
     // ── Terminal execute ─────────────────────────────────────────────
 
     private fun executeCommandResponse(session: IHTTPSession): Response {
-        val bodyText = session.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-        val payload = try { JSONObject(bodyText) } catch (e: Exception) { null }
-        val rawCommand = payload?.optString("command")?.trim().orEmpty()
-        val cwdInput = payload?.optString("cwd")?.trim().orEmpty()
-
-        if (rawCommand.isEmpty()) {
-            return executeJsonResponse(null, "Command is required", 400, false, "EXECUTE 400 missing command")
-        }
-
-        val resolvedCwd = runCatching { runtimeManager.resolveWorkspacePath(if (cwdInput.isEmpty()) "." else cwdInput) }.getOrNull()
-        if (resolvedCwd == null) {
-            return executeJsonResponse(null, "Access Denied: working directory is outside the Terminai workspace.", 126, false, "EXECUTE 403 sandbox cwd=$cwdInput")
-        }
-
-        val lowerCommand = rawCommand.lowercase()
-        val blockedPattern = listOf(";", "|", "&", "$(", "`", "<", ">", "sudo", "su", "rm -rf /", "rm -rf ~")
-        val escapedByUser = rawCommand.startsWith("\\")
-        if (!escapedByUser && blockedPattern.any { lowerCommand.contains(it) }) {
-            return executeJsonResponse(null, "Command blocked: shell metacharacters and control operators are disabled.", 126, false, "EXECUTE 403 shell meta command=$rawCommand")
-        }
-
-        val tokens = rawCommand.split("\\s+".toRegex())
-        val command = tokens.firstOrNull() ?: return executeJsonResponse(null, "Command is required", 400, false, "EXECUTE 400 empty")
-        val args = tokens.drop(1).toTypedArray()
-
-        if (!allowedCommands.contains(command)) {
-            return executeJsonResponse(null, "Command \"$command\" is not allowed.", 400, false, "EXECUTE 400 disallowed=$command")
-        }
-
-        args.forEach { arg ->
-            if (arg.startsWith("-")) return@forEach
-            if (!runCatching { runtimeManager.isInsideWorkspace(arg) }.getOrDefault(false)) {
-                return executeJsonResponse(null, "Access Denied: filesystem access is restricted to the Terminai workspace.", 403, false, "EXECUTE 403 arg sandbox=$arg")
+        return try {
+            val bodyText = runCatching {
+                val length = session.headers["content-length"]?.toIntOrNull() ?: -1
+                val input = session.inputStream
+                if (length > 0) {
+                    val buf = ByteArray(length)
+                    var read = 0
+                    while (read < length) {
+                        val r = input.read(buf, read, length - read)
+                        if (r == -1) break
+                        read += r
+                    }
+                    String(buf, 0, read, Charsets.UTF_8)
+                } else {
+                    input.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                }
+            }.getOrElse { e ->
+                Log.e(TAG, "EXECUTE body read failed", e)
+                return executeJsonResponse(null, "Failed to read request body: ${e.message}", 400, false, "EXECUTE 400 body")
             }
-        }
+            val payload = try { JSONObject(bodyText) } catch (e: Exception) { null }
+            val rawCommand = payload?.optString("command")?.trim().orEmpty()
+            val cwdInput = payload?.optString("cwd")?.trim().orEmpty()
 
-        return runCommand(runtimeManager, command, args, resolvedCwd)
+            if (rawCommand.isEmpty()) {
+                return executeJsonResponse(null, "Command is required", 400, false, "EXECUTE 400 missing command")
+            }
+
+            val resolvedCwd = runCatching { runtimeManager.resolveWorkspacePath(if (cwdInput.isEmpty()) "." else cwdInput) }.getOrNull()
+            if (resolvedCwd == null) {
+                return executeJsonResponse(null, "Access Denied: working directory is outside the Terminai workspace.", 126, false, "EXECUTE 403 sandbox cwd=$cwdInput")
+            }
+
+            val lowerCommand = rawCommand.lowercase()
+            val blockedPattern = listOf(";", "|", "&", "$(", "`", "<", ">", "sudo", "su", "rm -rf /", "rm -rf ~")
+            val escapedByUser = rawCommand.startsWith("\\")
+            if (!escapedByUser && blockedPattern.any { lowerCommand.contains(it) }) {
+                return executeJsonResponse(null, "Command blocked: shell metacharacters and control operators are disabled.", 126, false, "EXECUTE 403 shell meta command=$rawCommand")
+            }
+
+            val tokens = rawCommand.split("\\s+".toRegex())
+            val command = tokens.firstOrNull() ?: return executeJsonResponse(null, "Command is required", 400, false, "EXECUTE 400 empty")
+            val args = tokens.drop(1).toTypedArray()
+
+            if (!allowedCommands.contains(command)) {
+                return executeJsonResponse(null, "Command \"$command\" is not allowed.", 400, false, "EXECUTE 400 disallowed=$command")
+            }
+
+            args.forEach { arg ->
+                if (arg.startsWith("-")) return@forEach
+                if (!runCatching { runtimeManager.isInsideWorkspace(arg) }.getOrDefault(false)) {
+                    return executeJsonResponse(null, "Access Denied: filesystem access is restricted to the Terminai workspace.", 403, false, "EXECUTE 403 arg sandbox=$arg")
+                }
+            }
+
+            val response = runCommand(runtimeManager, command, args, resolvedCwd)
+            return response
+        } catch (e: Throwable) {
+            Log.e(TAG, "EXECUTE 500 unexpected", e)
+            return executeJsonResponse(null, "execute failed: ${e.message}", 500, false, "EXECUTE 500 unexpected")
+        }
     }
 
     private fun runCommand(runtimeManager: com.billybox.terminai.runtime.RuntimeManager, command: String, args: Array<out String>, cwd: File): Response {
         val timeoutMs = 60_000L
-        val process = ProcessBuilder(listOf(command) + args)
-            .directory(cwd)
-            .redirectErrorStream(false)
-            .start()
+        val process = try {
+            ProcessBuilder(listOf(command) + args)
+                .directory(cwd)
+                .redirectErrorStream(false)
+                .start()
+        } catch (e: Throwable) {
+            Log.e(TAG, "runCommand start failed cmd='$command' cwd='${cwd.absolutePath}'", e)
+            return executeJsonResponse(null, "command start failed: ${e.message}", 404, false, "EXECUTE 404 start_failed=$command")
+        }
 
         val stdout = StringBuilder()
         val stderr = StringBuilder()

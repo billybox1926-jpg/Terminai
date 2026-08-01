@@ -527,7 +527,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        Log.i("MainActivity", "onDestroy called")
         super.onDestroy()
-        (application as TerminaiApplication).nativeHttpServer.stop()
     }
 }
