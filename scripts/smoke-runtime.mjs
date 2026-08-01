@@ -32,10 +32,12 @@ function delay(ms) {
 }
 
 async function request(requestPath, options = {}) {
+  const apiKey = process.env.TERMINAI_API_KEY;
   const response = await fetch(`${baseUrl}${requestPath}`, {
     ...options,
     headers: {
       "content-type": "application/json",
+      ...(apiKey ? { "x-api-key": apiKey } : {}),
       ...(options.headers || {})
     }
   });
