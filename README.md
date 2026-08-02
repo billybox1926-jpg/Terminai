@@ -73,11 +73,13 @@ TERMINAI_AUTH_HEADER=x-api-key
 
 Supported request patterns:
 ```bash
-curl -H "X-API-Key: your-secret-key" http://localhost:3000/api/health
-curl -H "Authorization: Bearer your-secret-key" http://localhost:3000/api/health
+curl -H "X-API-Key: ***" http://localhost:3000/api/health
+curl -H "Authorization: Bearer ***" http://localhost:3000/api/health
 ```
 
-`/api/health` stays public even when auth is enabled. Unauthenticated or invalid requests return `401`; the server defaults to `127.0.0.1` and only binds externally if `TERMINAI_BIND_ADDRESS=0.0.0.0`.
+`/api/health` stays public even when auth is enabled. Unauthenticated or invalid requests return `401`.
+
+**Startup guard:** TerminAI refuses to start on a non-loopback bind address unless `TERMINAI_API_KEY` is set. This prevents accidentally exposing the server on `0.0.0.0` without auth.
 
 ## Project status
 
