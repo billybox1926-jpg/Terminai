@@ -35,6 +35,20 @@ function getWorkspaceRoot(): string {
 const TERMINAL_CWD_MARKER = "\u001eTERMINAI_CWD_44fb5948\u001e";
 const TERMINAL_OUTPUT_TRUNCATED = "... (output truncated)";
 
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  return normalized === "127.0.0.1" || normalized === "::1" || normalized === "localhost";
+}
+
+export function assertSecureBind(host: string): void {
+  if (isLoopbackHost(host)) return;
+  if (process.env.TERMINAI_API_KEY?.trim()) return;
+
+  throw new Error(
+    `Refusing to start: TERMINAI_API_KEY is required when TERMINAI_BIND_ADDRESS="${host}" is not loopback.`
+  );
+}
+
 // Body parser
 app.use(express.json());
 
@@ -2189,6 +2203,8 @@ Active directory or context string: "${currentContext || 'Workspace Root'}"`;
 // ----------------------------------------------------
 
 async function startServer() {
+  assertSecureBind(HOST);
+
   if (process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test") {
     // Integrate Vite as a dev middleware
     const vite = await createViteServer({
