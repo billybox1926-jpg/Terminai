@@ -153,7 +153,6 @@ cd android
 The debug APK will be at `android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ### Sideloading (Android 13/14)
-### Sideloading (Android 13/14)
 
 `MANAGE_EXTERNAL_STORAGE` is not required. TerminAI bundles the runtime inside the APK and extracts it on first launch.
 
