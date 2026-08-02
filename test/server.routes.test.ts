@@ -110,9 +110,14 @@ describe("POST /api/terminal/execute", () => {
   it("blocks interpreter eval/c flags", async () => {
     const cases = [
       'python -c "import os; os.system(\'id\')"',
+      'python3 -c "import os; os.system(\'id\')"',
       'node --eval "require(\'child_process\').execSync(\'id\')"',
+      'node -e "require(\'child_process\').execSync(\'id\')"',
       'ruby -e "system(\'id\')"',
-      'perl -e "system(\'id\')"'
+      'perl -e "system(\'id\')"',
+      'sh -c "id"',
+      'bash -c "id"',
+      'zsh -c "id"'
     ];
     for (const cmd of cases) {
       const res = await authed({ method: "POST", path: "/api/terminal/execute", body: { command: cmd } });
