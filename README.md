@@ -3,7 +3,7 @@ A terminal that thinks with you.
 
 [![TerminAI Web CI](https://github.com/billybox1926-jpg/Terminai/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/billybox1926-jpg/Terminai/actions/workflows/ci.yml)
 [![TerminAI Android Build](https://github.com/billybox1926-jpg/Terminai/actions/workflows/android-build.yml/badge.svg?branch=main)](https://github.com/billybox1926-jpg/Terminai/actions/workflows/android-build.yml)
-[![Hermes Agent](docs/assets/hermes-agent-icon.png)](https://github.com/billybox1926-jpg/hermes-agent)
+[![Hermes Agent](https://raw.githubusercontent.com/billybox1926-jpg/hermes-agent/refs/heads/main/website/static/img/logo.png)](https://github.com/billybox1926-jpg/hermes-agent)
 
 TerminAI is a single integrated terminal workspace: graphical shell, package layer, API bridge, file tools, telemetry, scripts, and AI command optimization in one app surface.
 
