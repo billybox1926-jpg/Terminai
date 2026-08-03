@@ -3,6 +3,7 @@ A terminal that thinks with you.
 
 [![TerminAI Web CI](https://github.com/billybox1926-jpg/Terminai/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/billybox1926-jpg/Terminai/actions/workflows/ci.yml)
 [![TerminAI Android Build](https://github.com/billybox1926-jpg/Terminai/actions/workflows/android-build.yml/badge.svg?branch=main)](https://github.com/billybox1926-jpg/Terminai/actions/workflows/android-build.yml)
+[![Hermes Agent](docs/assets/hermes-agent-icon.png)](https://github.com/billybox1926-jpg/hermes-agent)
 
 TerminAI is a single integrated terminal workspace: graphical shell, package layer, API bridge, file tools, telemetry, scripts, and AI command optimization in one app surface.
 
@@ -241,6 +242,21 @@ TERMINAI_API_KEY=$API_KEY ./scripts/android-install-smoke.sh
 # PowerShell
 $env:TERMINAI_API_KEY = $env:API_KEY; .\scripts\android-install-smoke.ps1
 ```
+
+## Hermes Agent on Termux
+
+See [`scripts/terminai-termux-setup.sh`](scripts/terminai-termux-setup.sh) for the authoritative install flow. The high-level path:
+
+1. Install Termux prerequisites and proot-distro.
+2. Install the Ubuntu distro using the short alias: `proot-distro install ubuntu`.
+   Do **not** use a version-tagged name like `ubuntu-22.04`; that alias will fail.
+3. Inside the proot shell, clone the source and install into a venv:
+   `git clone https://github.com/billybox1926-jpg/hermes-agent.git`
+   `pip install -e ".[termux]"`
+4. Launch:
+   `proot-distro login ubuntu -- bash -lc "source ~/hermes-agent/venv/bin/activate && hermes"`
+
+Inside proot Ubuntu, `psutil` builds from source without extra workarounds because the container runs on glibc rather than Termux's Bionic userspace.
 
 ## Security
 
